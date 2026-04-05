@@ -49,9 +49,9 @@ enum Commands {
         /// Skill name (without .md extension)
         skill: String,
 
-        /// Registry to pull from
+        /// Pin to a specific registry (optional -- resolved by priority if omitted)
         #[arg(long)]
-        from: String,
+        from: Option<String>,
     },
 
     /// Check for drift between local skills and registries
@@ -80,8 +80,15 @@ enum Commands {
         skill: String,
     },
 
-    /// List all skills and their sync status
-    Ls,
+    /// List skills and their sync status, or browse a registry
+    ///
+    /// Without --registry, lists project skills and their drift status.
+    /// With --registry, lists all available skills in that registry.
+    Ls {
+        /// List available skills in a specific registry
+        #[arg(long)]
+        registry: Option<String>,
+    },
 }
 
 fn main() -> Result<()> {
@@ -94,7 +101,7 @@ fn main() -> Result<()> {
     match cli.command {
         Commands::Setup => setup::setup(),
         Commands::Init => setup::init(&project_dir),
-        Commands::Add { skill, from } => commands::add(&project_dir, &skill, &from),
+        Commands::Add { skill, from } => commands::add(&project_dir, &skill, from.as_deref()),
         Commands::Check { file } => {
             let results = commands::check(&project_dir, file.as_deref())?;
             for (name, reg, status) in &results {
@@ -115,6 +122,12 @@ fn main() -> Result<()> {
             Ok(())
         }
         Commands::Push { skill } => commands::push(&project_dir, &skill),
-        Commands::Ls => commands::ls(&project_dir),
+        Commands::Ls { registry } => {
+            if let Some(reg_name) = registry {
+                commands::ls_registry(&reg_name)
+            } else {
+                commands::ls(&project_dir)
+            }
+        }
     }
 }
