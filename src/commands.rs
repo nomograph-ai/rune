@@ -12,6 +12,7 @@ pub enum SkillStatus {
     Current,
     Drifted { direction: DriftDirection },
     Missing,         // in manifest but not on disk
+    #[allow(dead_code)]
     Unregistered,    // on disk but not in manifest
     RegistryMissing, // in manifest but not in registry
 }

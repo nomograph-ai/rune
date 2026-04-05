@@ -60,25 +60,25 @@ fn setup_hook() -> Result<()> {
 
     // Check if hook already installed
     let hook_command = hook_path.to_string_lossy().to_string();
-    if let Some(hooks) = settings.get("hooks") {
-        if let Some(post) = hooks.get("PostToolUse") {
-            let already = post.as_array().map(|arr| {
-                arr.iter().any(|group| {
-                    group.get("hooks").and_then(|h| h.as_array()).map(|hooks| {
-                        hooks.iter().any(|h| {
-                            h.get("command")
-                                .and_then(|c| c.as_str())
-                                .map(|c| c.contains("rune"))
-                                .unwrap_or(false)
-                        })
-                    }).unwrap_or(false)
-                })
-            }).unwrap_or(false);
+    if let Some(hooks) = settings.get("hooks")
+        && let Some(post) = hooks.get("PostToolUse")
+    {
+        let already = post.as_array().map(|arr| {
+            arr.iter().any(|group| {
+                group.get("hooks").and_then(|h| h.as_array()).map(|hooks| {
+                    hooks.iter().any(|h| {
+                        h.get("command")
+                            .and_then(|c| c.as_str())
+                            .map(|c| c.contains("rune"))
+                            .unwrap_or(false)
+                    })
+                }).unwrap_or(false)
+            })
+        }).unwrap_or(false);
 
-            if already {
-                eprintln!("Hook already installed in settings.json");
-                return Ok(());
-            }
+        if already {
+            eprintln!("Hook already installed in settings.json");
+            return Ok(());
         }
     }
 
