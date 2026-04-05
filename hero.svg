@@ -12,93 +12,101 @@
 
   <!-- Left: Registries -->
   <text x="180" y="160" text-anchor="middle" font-size="13" fill="#2c2417" font-weight="bold">REGISTRIES</text>
+  <text x="180" y="178" text-anchor="middle" font-size="10" fill="#6b5d4f">any git repo</text>
 
   <!-- Public registry box -->
-  <rect x="50" y="175" width="260" height="140" fill="none" stroke="#2c2417" stroke-width="2"/>
-  <rect x="50" y="175" width="260" height="24" fill="#2c2417"/>
-  <text x="180" y="193" text-anchor="middle" font-size="12" fill="#faf6ed">runes (public)</text>
-  <text x="65" y="215" font-size="11" fill="#6b5d4f">tidy.md</text>
-  <text x="65" y="232" font-size="11" fill="#6b5d4f">mirror.md</text>
-  <text x="65" y="249" font-size="11" fill="#6b5d4f">preview.md</text>
-  <text x="65" y="266" font-size="11" fill="#6b5d4f">iconography.md</text>
-  <text x="65" y="283" font-size="11" fill="#6b5d4f">research.md</text>
-  <text x="180" y="215" font-size="11" fill="#6b5d4f">github.md</text>
-  <text x="180" y="232" font-size="11" fill="#6b5d4f">glab.md</text>
-  <text x="180" y="249" font-size="11" fill="#6b5d4f">gh.md</text>
+  <rect x="50" y="195" width="260" height="120" fill="none" stroke="#2c2417" stroke-width="2"/>
+  <rect x="50" y="195" width="260" height="24" fill="#2c2417"/>
+  <text x="180" y="213" text-anchor="middle" font-size="12" fill="#faf6ed">team-skills (public)</text>
+  <text x="65" y="238" font-size="11" fill="#6b5d4f">code-review.md</text>
+  <text x="65" y="255" font-size="11" fill="#6b5d4f">deploy.md</text>
+  <text x="65" y="272" font-size="11" fill="#6b5d4f">testing.md</text>
+  <text x="65" y="289" font-size="11" fill="#6b5d4f">tidy.md</text>
+  <text x="185" y="238" font-size="11" fill="#6b5d4f">docs.md</text>
+  <text x="185" y="255" font-size="11" fill="#6b5d4f">ci.md</text>
+  <text x="185" y="272" font-size="11" fill="#6b5d4f">security.md</text>
 
   <!-- Private registry box -->
-  <rect x="50" y="335" width="260" height="120" fill="none" stroke="#2c2417" stroke-width="2"/>
-  <rect x="50" y="335" width="260" height="24" fill="#2c2417"/>
-  <text x="180" y="353" text-anchor="middle" font-size="12" fill="#faf6ed">arcana (private)</text>
-  <text x="65" y="377" font-size="11" fill="#6b5d4f">voice.md</text>
-  <text x="65" y="394" font-size="11" fill="#6b5d4f">cadence.md</text>
-  <text x="65" y="411" font-size="11" fill="#6b5d4f">glean.md</text>
-  <text x="65" y="428" font-size="11" fill="#6b5d4f">dkg.md</text>
-  <text x="180" y="377" font-size="11" fill="#6b5d4f">gcloud.md</text>
-  <text x="180" y="394" font-size="11" fill="#6b5d4f">gws.md</text>
+  <rect x="50" y="340" width="260" height="100" fill="none" stroke="#2c2417" stroke-width="2"/>
+  <rect x="50" y="340" width="260" height="24" fill="#2c2417"/>
+  <text x="180" y="358" text-anchor="middle" font-size="12" fill="#faf6ed">my-skills (private)</text>
+  <text x="65" y="383" font-size="11" fill="#6b5d4f">writing-style.md</text>
+  <text x="65" y="400" font-size="11" fill="#6b5d4f">meeting-prep.md</text>
+  <text x="65" y="417" font-size="11" fill="#6b5d4f">internal-tools.md</text>
+  <text x="185" y="383" font-size="11" fill="#6b5d4f">oncall.md</text>
+  <text x="185" y="400" font-size="11" fill="#6b5d4f">runbooks.md</text>
 
   <!-- Center: rune CLI -->
-  <rect x="430" y="195" width="180" height="230" fill="none" stroke="#2c2417" stroke-width="3"/>
-  <rect x="430" y="195" width="180" height="28" fill="#2c2417"/>
-  <text x="520" y="215" text-anchor="middle" font-size="14" fill="#faf6ed" font-weight="bold">rune</text>
-  <text x="445" y="245" font-size="11" fill="#2c2417">check</text>
-  <text x="445" y="262" font-size="10" fill="#6b5d4f">  detect drift</text>
-  <text x="445" y="285" font-size="11" fill="#2c2417">sync</text>
-  <text x="445" y="302" font-size="10" fill="#6b5d4f">  pull updates</text>
-  <text x="445" y="325" font-size="11" fill="#2c2417">push</text>
-  <text x="445" y="342" font-size="10" fill="#6b5d4f">  send upstream</text>
-  <text x="445" y="365" font-size="11" fill="#2c2417">add / ls</text>
-  <text x="445" y="382" font-size="10" fill="#6b5d4f">  manage skills</text>
+  <rect x="430" y="210" width="180" height="230" fill="none" stroke="#2c2417" stroke-width="3"/>
+  <rect x="430" y="210" width="180" height="28" fill="#2c2417"/>
+  <text x="520" y="230" text-anchor="middle" font-size="14" fill="#faf6ed" font-weight="bold">rune</text>
+  <text x="445" y="260" font-size="11" fill="#2c2417">check</text>
+  <text x="445" y="277" font-size="10" fill="#6b5d4f">  detect drift</text>
+  <text x="445" y="300" font-size="11" fill="#2c2417">sync</text>
+  <text x="445" y="317" font-size="10" fill="#6b5d4f">  pull updates</text>
+  <text x="445" y="340" font-size="11" fill="#2c2417">push</text>
+  <text x="445" y="357" font-size="10" fill="#6b5d4f">  send upstream</text>
+  <text x="445" y="380" font-size="11" fill="#2c2417">add / ls</text>
+  <text x="445" y="397" font-size="10" fill="#6b5d4f">  manage skills</text>
 
   <!-- Right: Projects -->
   <text x="870" y="160" text-anchor="middle" font-size="13" fill="#2c2417" font-weight="bold">PROJECTS</text>
+  <text x="870" y="178" text-anchor="middle" font-size="10" fill="#6b5d4f">.claude/skills/</text>
 
-  <rect x="740" y="175" width="210" height="90" fill="none" stroke="#2c2417" stroke-width="2"/>
-  <rect x="740" y="175" width="210" height="24" fill="#2c2417"/>
-  <text x="845" y="193" text-anchor="middle" font-size="12" fill="#faf6ed">project-A</text>
-  <text x="755" y="217" font-size="10" fill="#6b5d4f">.claude/skills/tidy.md</text>
-  <text x="755" y="232" font-size="10" fill="#6b5d4f">.claude/skills/voice.md</text>
-  <text x="755" y="247" font-size="10" fill="#6b5d4f">.claude/rune.toml</text>
+  <rect x="740" y="195" width="210" height="85" fill="none" stroke="#2c2417" stroke-width="2"/>
+  <rect x="740" y="195" width="210" height="24" fill="#2c2417"/>
+  <text x="845" y="213" text-anchor="middle" font-size="12" fill="#faf6ed">project-A</text>
+  <text x="755" y="237" font-size="10" fill="#6b5d4f">tidy.md</text>
+  <text x="755" y="252" font-size="10" fill="#6b5d4f">writing-style.md</text>
+  <text x="755" y="267" font-size="10" fill="#6b5d4f">rune.toml</text>
 
-  <rect x="740" y="285" width="210" height="90" fill="none" stroke="#2c2417" stroke-width="2"/>
-  <rect x="740" y="285" width="210" height="24" fill="#2c2417"/>
-  <text x="845" y="303" text-anchor="middle" font-size="12" fill="#faf6ed">project-B</text>
-  <text x="755" y="327" font-size="10" fill="#6b5d4f">.claude/skills/tidy.md</text>
-  <text x="755" y="342" font-size="10" fill="#6b5d4f">.claude/skills/research.md</text>
-  <text x="755" y="357" font-size="10" fill="#6b5d4f">.claude/rune.toml</text>
+  <rect x="740" y="300" width="210" height="85" fill="none" stroke="#2c2417" stroke-width="2"/>
+  <rect x="740" y="300" width="210" height="24" fill="#2c2417"/>
+  <text x="845" y="318" text-anchor="middle" font-size="12" fill="#faf6ed">project-B</text>
+  <text x="755" y="342" font-size="10" fill="#6b5d4f">deploy.md</text>
+  <text x="755" y="357" font-size="10" fill="#6b5d4f">testing.md</text>
+  <text x="755" y="372" font-size="10" fill="#6b5d4f">rune.toml</text>
 
-  <rect x="740" y="395" width="210" height="75" fill="none" stroke="#2c2417" stroke-width="2"/>
-  <rect x="740" y="395" width="210" height="24" fill="#2c2417"/>
-  <text x="845" y="413" text-anchor="middle" font-size="12" fill="#faf6ed">project-C</text>
-  <text x="755" y="437" font-size="10" fill="#6b5d4f">.claude/skills/mirror.md</text>
-  <text x="755" y="452" font-size="10" fill="#6b5d4f">.claude/rune.toml</text>
+  <rect x="740" y="405" width="210" height="70" fill="none" stroke="#2c2417" stroke-width="2"/>
+  <rect x="740" y="405" width="210" height="24" fill="#2c2417"/>
+  <text x="845" y="423" text-anchor="middle" font-size="12" fill="#faf6ed">project-C</text>
+  <text x="755" y="447" font-size="10" fill="#6b5d4f">code-review.md</text>
+  <text x="755" y="462" font-size="10" fill="#6b5d4f">rune.toml</text>
 
   <!-- Arrows: registries -> rune -->
-  <line x1="310" y1="245" x2="430" y2="285" stroke="#2c2417" stroke-width="2" marker-end="url(#arr)"/>
-  <line x1="310" y1="395" x2="430" y2="345" stroke="#2c2417" stroke-width="2" marker-end="url(#arr)"/>
-  <text x="358" y="248" font-size="9" fill="#6b5d4f">git pull</text>
+  <line x1="310" y1="255" x2="430" y2="295" stroke="#2c2417" stroke-width="2" marker-end="url(#arr)"/>
+  <line x1="310" y1="390" x2="430" y2="355" stroke="#2c2417" stroke-width="2" marker-end="url(#arr)"/>
+  <text x="358" y="258" font-size="9" fill="#6b5d4f">git pull</text>
   <text x="358" y="388" font-size="9" fill="#6b5d4f">git pull</text>
 
   <!-- Arrows: rune -> projects -->
-  <line x1="610" y1="270" x2="740" y2="220" stroke="#2c2417" stroke-width="2" marker-end="url(#arr)"/>
-  <line x1="610" y1="310" x2="740" y2="330" stroke="#2c2417" stroke-width="2" marker-end="url(#arr)"/>
-  <line x1="610" y1="360" x2="740" y2="430" stroke="#2c2417" stroke-width="2" marker-end="url(#arr)"/>
-  <text x="665" y="232" font-size="9" fill="#6b5d4f">sync</text>
-  <text x="665" y="324" font-size="9" fill="#6b5d4f">sync</text>
-  <text x="665" y="408" font-size="9" fill="#6b5d4f">sync</text>
+  <line x1="610" y1="285" x2="740" y2="240" stroke="#2c2417" stroke-width="2" marker-end="url(#arr)"/>
+  <line x1="610" y1="325" x2="740" y2="340" stroke="#2c2417" stroke-width="2" marker-end="url(#arr)"/>
+  <line x1="610" y1="370" x2="740" y2="440" stroke="#2c2417" stroke-width="2" marker-end="url(#arr)"/>
+  <text x="665" y="248" font-size="9" fill="#6b5d4f">sync</text>
+  <text x="665" y="336" font-size="9" fill="#6b5d4f">sync</text>
+  <text x="665" y="418" font-size="9" fill="#6b5d4f">sync</text>
 
-  <!-- Push arrows (dashed, right to left) -->
-  <line x1="740" y1="240" x2="610" y2="290" stroke="#6b5d4f" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arr-dim)"/>
-  <text x="665" y="257" font-size="9" fill="#c4b99a">push</text>
+  <!-- Push arrow (dashed, right to left) -->
+  <line x1="740" y1="260" x2="610" y2="305" stroke="#6b5d4f" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arr-dim)"/>
+  <text x="665" y="272" font-size="9" fill="#c4b99a">push</text>
 
-  <!-- Bottom: hook integration -->
-  <line x1="100" y1="480" x2="1100" y2="480" stroke="#c4b99a" stroke-width="1"/>
-  <text x="520" y="510" text-anchor="middle" font-size="12" fill="#2c2417">PostToolUse hook fires on .claude/skills/*.md changes</text>
-  <text x="520" y="530" text-anchor="middle" font-size="12" fill="#6b5d4f">rune check --file PATH  -->  Claude asks: "push upstream?"</text>
-  <text x="520" y="560" text-anchor="middle" font-size="12" fill="#2c2417">muxr pre_create runs rune sync -- skills current before Claude launches</text>
+  <!-- Bottom: key points -->
+  <line x1="100" y1="500" x2="1100" y2="500" stroke="#c4b99a" stroke-width="1"/>
+  <text x="200" y="530" text-anchor="middle" font-size="12" fill="#2c2417" font-weight="bold">registries are git repos</text>
+  <text x="200" y="548" text-anchor="middle" font-size="10" fill="#6b5d4f">any host, any visibility</text>
+  <text x="200" y="563" text-anchor="middle" font-size="10" fill="#6b5d4f">public or private</text>
+
+  <text x="520" y="530" text-anchor="middle" font-size="12" fill="#2c2417" font-weight="bold">hook detects drift</text>
+  <text x="520" y="548" text-anchor="middle" font-size="10" fill="#6b5d4f">PostToolUse fires on</text>
+  <text x="520" y="563" text-anchor="middle" font-size="10" fill="#6b5d4f">.claude/skills/*.md edits</text>
+
+  <text x="870" y="530" text-anchor="middle" font-size="12" fill="#2c2417" font-weight="bold">agentskills.io compatible</text>
+  <text x="870" y="548" text-anchor="middle" font-size="10" fill="#6b5d4f">works with Claude Code, Cursor,</text>
+  <text x="870" y="563" text-anchor="middle" font-size="10" fill="#6b5d4f">Copilot, Gemini CLI</text>
 
   <!-- Footer -->
-  <text x="600" y="610" text-anchor="middle" font-size="11" fill="#c4b99a">dunn.dev/rune -- dunn.dev/runes -- dunn.dev/arcana</text>
+  <text x="600" y="610" text-anchor="middle" font-size="11" fill="#c4b99a">cargo install rune -- dunn.dev/rune</text>
 
   <defs>
     <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
