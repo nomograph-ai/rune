@@ -36,10 +36,8 @@ workflow:
 
 # -- Reusable config --
 
-.rust-macos:
-  tags:
-    - saas-macos-large-m2pro
-  image: macos-15-xcode-16
+.rust:
+  image: rust:1.93-bookworm
   cache:
     - key: cargo-registry-${CI_COMMIT_REF_SLUG}
       paths:
@@ -48,6 +46,18 @@ workflow:
       policy: pull-push
     - key: cargo-target-${CI_COMMIT_REF_SLUG}
       paths:
+        - target/
+      policy: pull-push
+
+.rust-macos:
+  tags:
+    - saas-macos-medium-m1
+  image: macos-15-xcode-16
+  cache:
+    - key: cargo-macos-${CI_COMMIT_REF_SLUG}
+      paths:
+        - .cargo/registry/cache
+        - .cargo/registry/index
         - target/
       policy: pull-push
   before_script:
@@ -72,7 +82,7 @@ workflow:
 check:
   stage: test
   extends:
-    - .rust-macos
+    - .rust
     - .on-code-change
   script:
     - rustup component add clippy
@@ -82,7 +92,7 @@ check:
 audit:
   stage: test
   extends:
-    - .rust-macos
+    - .rust
     - .on-code-change
   needs:
     - job: check
