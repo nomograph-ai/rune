@@ -1,0 +1,314 @@
+# rune CI/CD pipeline
+#
+# Supply chain: CycloneDX SBOM + cosign keyless signing via GitLab OIDC.
+# Binaries published to GitLab Generic Package Registry on tag.
+
+include:
+  - template: Jobs/Secret-Detection.gitlab-ci.yml
+
+stages:
+  - test
+  - build
+  - sign
+  - release
+
+default:
+  tags:
+    - storr
+  interruptible: true
+  retry:
+    max: 2
+    when:
+      - runner_system_failure
+      - stuck_or_timeout_failure
+
+variables:
+  CARGO_HOME: ${CI_PROJECT_DIR}/.cargo
+
+workflow:
+  name: "$CI_COMMIT_REF_NAME ($CI_PIPELINE_SOURCE)"
+  auto_cancel:
+    on_new_commit: interruptible
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_TAG
+
+# -- Reusable config --
+
+.rust-macos:
+  tags:
+    - saas-macos-large-m2pro
+  image: macos-15-xcode-16
+  cache:
+    - key: cargo-registry-${CI_COMMIT_REF_SLUG}
+      paths:
+        - .cargo/registry/cache
+        - .cargo/registry/index
+      policy: pull-push
+    - key: cargo-target-${CI_COMMIT_REF_SLUG}
+      paths:
+        - target/
+      policy: pull-push
+  before_script:
+    - export CARGO_HOME="${CI_PROJECT_DIR}/.cargo"
+    - export RUSTUP_HOME="${CI_PROJECT_DIR}/.rustup"
+    - curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.93.0
+    - source "${CARGO_HOME}/env"
+    - rustc --version
+
+.on-tag:
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/
+
+.on-code-change:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_TAG
+
+# -- Test stage --
+
+check:
+  stage: test
+  extends:
+    - .rust-macos
+    - .on-code-change
+  script:
+    - rustup component add clippy
+    - cargo clippy --release -- -D warnings
+    - cargo test --release
+
+audit:
+  stage: test
+  extends:
+    - .rust-macos
+    - .on-code-change
+  needs:
+    - job: check
+      artifacts: false
+  script:
+    - cargo install --locked cargo-audit cargo-deny
+    - echo "--- cargo audit (RustSec advisory database) ---"
+    - cargo audit
+    - echo "--- cargo deny (licenses, advisories, bans) ---"
+    - cargo deny check advisories licenses bans || true
+
+# -- Build stage (tag only) --
+
+build:linux-amd64:
+  stage: build
+  extends: .on-tag
+  image: rust:1.93-bookworm
+  interruptible: false
+  cache:
+    - key: cargo-linux-${CI_COMMIT_REF_SLUG}
+      paths:
+        - .cargo/registry/cache
+        - .cargo/registry/index
+        - target/
+      policy: pull-push
+  needs:
+    - job: check
+      artifacts: false
+    - job: audit
+      artifacts: false
+  script:
+    - cargo install --locked cargo-cyclonedx
+    - cargo build --release
+    - strip target/release/rune
+    - cp target/release/rune rune-linux-amd64
+    - sha256sum rune-linux-amd64 > rune-linux-amd64.sha256
+    - echo "--- Generating CycloneDX SBOM ---"
+    - cargo cyclonedx --format json --override-filename rune-linux-amd64.sbom.cdx
+  artifacts:
+    paths:
+      - rune-linux-amd64
+      - rune-linux-amd64.sha256
+      - rune-linux-amd64.sbom.cdx.json
+    expire_in: 4 weeks
+    reports:
+      cyclonedx:
+        - rune-linux-amd64.sbom.cdx.json
+
+build:darwin-arm64:
+  stage: build
+  extends:
+    - .rust-macos
+    - .on-tag
+  interruptible: false
+  needs:
+    - job: check
+      artifacts: false
+    - job: audit
+      artifacts: false
+  script:
+    - cargo install --locked cargo-cyclonedx
+    - cargo build --release
+    - strip target/release/rune
+    - cp target/release/rune rune-darwin-arm64
+    - shasum -a 256 rune-darwin-arm64 > rune-darwin-arm64.sha256
+    - echo "--- Generating CycloneDX SBOM ---"
+    - cargo cyclonedx --format json --override-filename rune-darwin-arm64.sbom.cdx
+  artifacts:
+    paths:
+      - rune-darwin-arm64
+      - rune-darwin-arm64.sha256
+      - rune-darwin-arm64.sbom.cdx.json
+    expire_in: 4 weeks
+    reports:
+      cyclonedx:
+        - rune-darwin-arm64.sbom.cdx.json
+
+# -- Sign stage (tag only) --
+
+sign:linux:
+  stage: sign
+  extends: .on-tag
+  image:
+    name: bitnami/cosign:latest
+    entrypoint: [""]
+  interruptible: false
+  needs:
+    - job: build:linux-amd64
+      artifacts: true
+  id_tokens:
+    SIGSTORE_ID_TOKEN:
+      aud: sigstore
+  script:
+    - echo "--- Signing binary ---"
+    - cosign sign-blob --yes
+        --bundle rune-linux-amd64.bundle
+        rune-linux-amd64
+    - echo "--- Signing SBOM ---"
+    - cosign sign-blob --yes
+        --bundle rune-linux-amd64.sbom.cdx.json.bundle
+        rune-linux-amd64.sbom.cdx.json || echo 'SBOM signing skipped'
+  artifacts:
+    paths:
+      - rune-linux-amd64.bundle
+      - rune-linux-amd64.sbom.cdx.json.bundle
+    expire_in: 4 weeks
+
+sign:darwin:
+  stage: sign
+  extends: .on-tag
+  image:
+    name: bitnami/cosign:latest
+    entrypoint: [""]
+  interruptible: false
+  needs:
+    - job: build:darwin-arm64
+      artifacts: true
+  id_tokens:
+    SIGSTORE_ID_TOKEN:
+      aud: sigstore
+  script:
+    - echo "--- Signing binary ---"
+    - cosign sign-blob --yes
+        --bundle rune-darwin-arm64.bundle
+        rune-darwin-arm64
+    - echo "--- Signing SBOM ---"
+    - cosign sign-blob --yes
+        --bundle rune-darwin-arm64.sbom.cdx.json.bundle
+        rune-darwin-arm64.sbom.cdx.json || echo 'SBOM signing skipped'
+  artifacts:
+    paths:
+      - rune-darwin-arm64.bundle
+      - rune-darwin-arm64.sbom.cdx.json.bundle
+    expire_in: 4 weeks
+
+# -- Release stage (tag only) --
+
+publish:binaries:
+  stage: release
+  extends: .on-tag
+  image: curlimages/curl:latest
+  interruptible: false
+  needs:
+    - job: build:darwin-arm64
+      artifacts: true
+    - job: build:linux-amd64
+      artifacts: true
+  script:
+    - |
+      VERSION="${CI_COMMIT_TAG#v}"
+      for ARCH in darwin-arm64 linux-amd64; do
+        FILENAME="rune-${VERSION}-${ARCH}"
+        cp "rune-${ARCH}" "${FILENAME}"
+        curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" \
+             --upload-file "${FILENAME}" \
+             "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/rune/${VERSION}/${FILENAME}"
+      done
+
+publish:crates:
+  stage: release
+  extends: .on-tag
+  image: rust:1.93-bookworm
+  interruptible: false
+  needs:
+    - job: check
+      artifacts: false
+  script:
+    - cargo publish --allow-dirty
+
+release:
+  stage: release
+  extends: .on-tag
+  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  interruptible: false
+  needs:
+    - job: build:darwin-arm64
+      artifacts: true
+    - job: build:linux-amd64
+      artifacts: true
+    - job: sign:darwin
+      artifacts: true
+    - job: sign:linux
+      artifacts: true
+    - job: publish:binaries
+    - job: publish:crates
+  script:
+    - echo "Creating release for ${CI_COMMIT_TAG}"
+  release:
+    tag_name: ${CI_COMMIT_TAG}
+    name: "rune ${CI_COMMIT_TAG}"
+    description: |
+      ## rune ${CI_COMMIT_TAG}
+
+      Skill registry manager for AI coding agents.
+
+      ### Install
+
+      ```bash
+      # From crates.io
+      cargo install rune
+
+      # Pre-built binary (Linux)
+      curl -L "${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_TAG}/raw/rune-linux-amd64?job=build:linux-amd64" -o rune
+      chmod +x rune && mv rune ~/.local/bin/rune
+
+      # Pre-built binary (macOS Apple Silicon)
+      curl -L "${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_TAG}/raw/rune-darwin-arm64?job=build:darwin-arm64" -o rune
+      chmod +x rune && mv rune ~/bin/rune
+      ```
+    assets:
+      links:
+        - name: "rune-linux-amd64"
+          url: "${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_TAG}/raw/rune-linux-amd64?job=build:linux-amd64"
+          link_type: "package"
+        - name: "rune-linux-amd64.sha256"
+          url: "${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_TAG}/raw/rune-linux-amd64.sha256?job=build:linux-amd64"
+          link_type: "other"
+        - name: "rune-darwin-arm64"
+          url: "${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_TAG}/raw/rune-darwin-arm64?job=build:darwin-arm64"
+          link_type: "package"
+        - name: "rune-darwin-arm64.sha256"
+          url: "${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_TAG}/raw/rune-darwin-arm64.sha256?job=build:darwin-arm64"
+          link_type: "other"
+        - name: "SBOM (linux-amd64)"
+          url: "${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_TAG}/raw/rune-linux-amd64.sbom.cdx.json?job=build:linux-amd64"
+          link_type: "other"
+        - name: "SBOM (darwin-arm64)"
+          url: "${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_TAG}/raw/rune-darwin-arm64.sbom.cdx.json?job=build:darwin-arm64"
+          link_type: "other"

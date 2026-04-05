@@ -55,6 +55,7 @@ pub fn skill_path(repo_dir: &Path, reg: &Registry, skill_name: &str) -> PathBuf 
 }
 
 /// List all available skills in a registry.
+#[allow(dead_code)]
 pub fn list_skills(repo_dir: &Path, reg: &Registry) -> Result<Vec<String>> {
     let base = match &reg.path {
         Some(p) => repo_dir.join(p),
@@ -69,10 +70,10 @@ pub fn list_skills(repo_dir: &Path, reg: &Registry) -> Result<Vec<String>> {
     for entry in std::fs::read_dir(&base)? {
         let entry = entry?;
         let path = entry.path();
-        if path.extension().map(|e| e == "md").unwrap_or(false) {
-            if let Some(stem) = path.file_stem() {
-                skills.push(stem.to_string_lossy().to_string());
-            }
+        if path.extension().map(|e| e == "md").unwrap_or(false)
+            && let Some(stem) = path.file_stem()
+        {
+            skills.push(stem.to_string_lossy().to_string());
         }
     }
     skills.sort();
