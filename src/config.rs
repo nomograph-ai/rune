@@ -20,6 +20,9 @@ pub struct Registry {
     /// Branch to track. Defaults to "main".
     #[serde(default = "default_branch")]
     pub branch: String,
+    /// Read-only registries cannot be pushed to. Defaults to false.
+    #[serde(default)]
+    pub readonly: bool,
 }
 
 fn default_branch() -> String {
@@ -60,6 +63,22 @@ impl Config {
 
     pub fn registry(&self, name: &str) -> Option<&Registry> {
         self.registry.iter().find(|r| r.name == name)
+    }
+
+    /// Resolve which registry has a skill, checking in declaration order.
+    /// Returns the first registry that contains the skill.
+    pub fn resolve_skill(&self, skill_name: &str, cache_dir: &std::path::Path) -> Option<&Registry> {
+        for reg in &self.registry {
+            let repo_dir = cache_dir.join(&reg.name);
+            if !repo_dir.exists() {
+                continue;
+            }
+            let skill_path = crate::registry::skill_path(&repo_dir, reg, skill_name);
+            if skill_path.exists() {
+                return Some(reg);
+            }
+        }
+        None
     }
 
     pub fn save(&self) -> Result<()> {
