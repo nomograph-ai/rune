@@ -1,0 +1,26 @@
+[package]
+name = "rune"
+version = "0.1.0"
+edition = "2024"
+description = "Skill registry manager for AI coding agents"
+repository = "https://gitlab.com/dunn.dev/rune"
+homepage = "https://gitlab.com/dunn.dev/rune"
+keywords = ["ai", "skills", "claude-code", "agent", "registry"]
+categories = ["command-line-utilities", "development-tools"]
+readme = "README.md"
+license = "MIT"
+
+[[bin]]
+name = "rune"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive", "env"] }
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+serde_json = "1"
+anyhow = "1"
+dirs = "6"
+git2 = "0.20"
+sha2 = "0.10"
+hex = "0.4"
