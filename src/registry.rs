@@ -1,5 +1,7 @@
 use anyhow::{Context, Result};
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 use crate::config::{Config, Registry};
 
@@ -21,58 +23,110 @@ pub fn validate_skill_name(name: &str) -> Result<()> {
     Ok(())
 }
 
+// ── Registry pull cache ─────────────────────────────────────────────
+
+static PULLED_REGISTRIES: Mutex<Option<HashSet<String>>> = Mutex::new(None);
+
+fn mark_pulled(name: &str) {
+    let mut guard = PULLED_REGISTRIES.lock().unwrap();
+    let set = guard.get_or_insert_with(HashSet::new);
+    set.insert(name.to_string());
+}
+
+fn already_pulled(name: &str) -> bool {
+    let guard = PULLED_REGISTRIES.lock().unwrap();
+    guard.as_ref().map(|s| s.contains(name)).unwrap_or(false)
+}
+
+/// Global offline flag. Set by --offline CLI flag.
+static OFFLINE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn set_offline(offline: bool) {
+    OFFLINE.store(offline, std::sync::atomic::Ordering::Relaxed);
+}
+
+pub fn is_offline() -> bool {
+    OFFLINE.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+// ── Ensure registry ─────────────────────────────────────────────────
+
 /// Ensure a registry is cloned and up to date. Returns the local path.
+/// Pulls at most once per invocation. Respects --offline flag.
 pub fn ensure_registry(reg: &Registry) -> Result<PathBuf> {
     let cache_dir = Config::cache_dir()?;
     let repo_dir = cache_dir.join(&reg.name);
 
     if repo_dir.exists() {
-        pull(&repo_dir, &reg.branch)?;
+        if !is_offline() && !already_pulled(&reg.name) {
+            match pull(&repo_dir, &reg.branch) {
+                Ok(()) => mark_pulled(&reg.name),
+                Err(e) => {
+                    eprintln!("  warning: failed to update {}: {e}", reg.name);
+                    eprintln!("  using cached version");
+                }
+            }
+        }
+    } else if is_offline() {
+        anyhow::bail!(
+            "Registry {} not cached and --offline is set. Run without --offline first.",
+            reg.name
+        );
     } else {
         clone(&reg.url, &repo_dir, &reg.branch)?;
+        mark_pulled(&reg.name);
     }
 
     Ok(repo_dir)
 }
 
-/// Timeout for git network operations (seconds). Reserved for future use.
-#[allow(dead_code)]
-const GIT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+// ── Git operations ──────────────────────────────────────────────────
 
-/// Run a git command with a timeout. Returns an error if the command
-/// times out or exits non-zero.
+/// Run a git command. Returns error with stderr on failure.
 fn git_command(args: &[&str], dir: Option<&Path>) -> Result<()> {
     let mut cmd = std::process::Command::new("git");
     cmd.args(args);
     if let Some(d) = dir {
         cmd.current_dir(d);
     }
-    let child = cmd.spawn().context("Failed to start git")?;
-    let output = child.wait_with_output().context("Failed to wait for git")?;
-    // Note: std::process doesn't have native timeout.
-    // We rely on git's own timeout mechanisms.
-    // For true timeout enforcement, we'd need tokio or a signal handler.
+    let output = cmd.output().context("Failed to start git")?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!("git {} failed: {}", args.first().unwrap_or(&""), stderr.trim());
+        anyhow::bail!(
+            "git {} failed: {}",
+            args.first().unwrap_or(&""),
+            stderr.trim()
+        );
     }
     Ok(())
 }
 
-/// Clone a registry repo via git CLI (respects system credential helpers).
+/// Run a git command and capture stdout.
+fn git_output(args: &[&str], dir: &Path) -> Result<String> {
+    let output = std::process::Command::new("git")
+        .args(args)
+        .current_dir(dir)
+        .output()
+        .context("Failed to start git")?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("git {} failed: {}", args.first().unwrap_or(&""), stderr.trim());
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
 fn clone(url: &str, dest: &Path, branch: &str) -> Result<()> {
-    // --depth 1 prevents DoS via large repositories
-    // -- prevents URL/branch from being interpreted as flags
     let dest_str = dest.to_string_lossy();
     git_command(
-        &["clone", "--quiet", "--depth", "1", "--branch", branch, "--single-branch", "--", url, &dest_str],
+        &[
+            "clone", "--quiet", "--depth", "1", "--branch", branch,
+            "--single-branch", "--", url, &dest_str,
+        ],
         None,
     )
 }
 
-/// Pull latest changes for a registry via git CLI.
 fn pull(repo_dir: &Path, branch: &str) -> Result<()> {
-    // fetch + reset for reliability (handles failed pushes that left local commits)
     git_command(
         &["fetch", "--quiet", "--depth", "1", "origin", "--", branch],
         Some(repo_dir),
@@ -84,28 +138,58 @@ fn pull(repo_dir: &Path, branch: &str) -> Result<()> {
     )
 }
 
-/// Get the path to a skill in a registry.
-/// Skills can be either a file (`skill-name.md`) or a directory
-/// (`skill-name/` with SKILL.md inside). Returns the path that exists,
-/// preferring directory format.
-///
-/// Validates that the resolved path stays within the repo directory
-/// to prevent path traversal attacks.
+/// Get the last commit hash that modified a specific path in a repo.
+/// This tracks skill-specific changes, not repo-wide HEAD.
+pub fn skill_commit(repo_dir: &Path, skill_path_relative: &str) -> Option<String> {
+    git_output(
+        &["log", "-1", "--format=%h", "--", skill_path_relative],
+        repo_dir,
+    )
+    .ok()
+    .filter(|s| !s.is_empty())
+}
+
+/// Commit and push changes to a registry via git CLI.
+pub fn commit_and_push(repo_dir: &Path, skill_name: &str, branch: &str) -> Result<()> {
+    git_command(&["add", "-A", "--", skill_name], Some(repo_dir))?;
+
+    // Check if there are staged changes
+    let status = std::process::Command::new("git")
+        .args(["diff", "--cached", "--quiet"])
+        .current_dir(repo_dir)
+        .status()
+        .context("Failed to check git diff")?;
+
+    if status.success() {
+        anyhow::bail!("No changes to push for {skill_name}");
+    }
+
+    git_command(
+        &["commit", "--quiet", "-m", &format!("update {skill_name}\n\nPushed by rune")],
+        Some(repo_dir),
+    )?;
+    git_command(
+        &["push", "--quiet", "origin", "--", branch],
+        Some(repo_dir),
+    )
+}
+
+// ── Path operations ─────────────────────────────────────────────────
+
+/// Get the path to a skill in a registry. Uses symlink_metadata
+/// to avoid following symlinks. Verifies path stays within repo.
 pub fn skill_path(repo_dir: &Path, reg: &Registry, skill_name: &str) -> PathBuf {
     let base = match &reg.path {
         Some(p) => {
             let resolved = repo_dir.join(p);
-            // Verify path stays within repo directory
             if !resolved.starts_with(repo_dir) {
-                return repo_dir.join(format!("{skill_name}.md")); // safe fallback
+                return repo_dir.join(format!("{skill_name}.md"));
             }
             resolved
         }
         None => repo_dir.to_path_buf(),
     };
 
-    // Directory skill: skill-name/SKILL.md
-    // Use symlink_metadata to avoid following symlinks
     let dir_path = base.join(skill_name);
     let is_real_dir = dir_path
         .symlink_metadata()
@@ -115,19 +199,27 @@ pub fn skill_path(repo_dir: &Path, reg: &Registry, skill_name: &str) -> PathBuf 
         return dir_path;
     }
 
-    // Flat file: skill-name.md
     base.join(format!("{skill_name}.md"))
 }
 
-/// Check if a skill is a directory skill (vs a flat file).
-pub fn is_directory_skill(path: &Path) -> bool {
-    path.is_dir()
+/// The relative path of a skill within a registry (for git log queries).
+pub fn skill_path_relative(reg: &Registry, skill_name: &str) -> String {
+    match &reg.path {
+        Some(p) => format!("{p}/{skill_name}"),
+        None => skill_name.to_string(),
+    }
 }
 
-/// Copy a skill from registry to local, handling both file and directory skills.
-/// Rejects symlinks at the top level.
+pub fn is_directory_skill(path: &Path) -> bool {
+    path.symlink_metadata()
+        .map(|m| m.file_type().is_dir())
+        .unwrap_or(false)
+}
+
+// ── Copy operations ─────────────────────────────────────────────────
+
+/// Copy a skill from registry to local. Rejects symlinks.
 pub fn copy_skill(src: &Path, dest: &Path) -> Result<()> {
-    // Reject symlinks at the source
     if src.symlink_metadata()?.file_type().is_symlink() {
         anyhow::bail!("Refusing to copy symlink: {}", src.display());
     }
@@ -142,29 +234,21 @@ pub fn copy_skill(src: &Path, dest: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Recursively copy a directory. Skips symlinks and dotfiles (.git, etc).
 fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<()> {
     std::fs::create_dir_all(dest)?;
     for entry in std::fs::read_dir(src)? {
         let entry = entry?;
-        let file_type = entry.file_type()?;
+        let ft = entry.file_type()?;
         let name = entry.file_name();
-        let name_str = name.to_string_lossy();
 
-        // Skip symlinks (prevent reading arbitrary files)
-        if file_type.is_symlink() {
-            continue;
-        }
-
-        // Skip dotfiles/dotdirs (.git, .gitignore, etc)
-        if name_str.starts_with('.') {
+        if ft.is_symlink() || name.to_string_lossy().starts_with('.') {
             continue;
         }
 
         let src_path = entry.path();
         let dest_path = dest.join(&name);
 
-        if file_type.is_dir() {
+        if ft.is_dir() {
             copy_dir_recursive(&src_path, &dest_path)?;
         } else {
             std::fs::copy(&src_path, &dest_path)?;
@@ -173,21 +257,20 @@ fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Hash all files in a skill (file or directory) for drift detection.
-/// Returns None only if the path doesn't exist. Errors on read failures.
+// ── Hash operations ─────────────────────────────────────────────────
+
+/// Hash all files in a skill for drift detection. Rejects symlinks.
 pub fn skill_hash(path: &Path) -> Option<String> {
     use sha2::{Digest, Sha256};
 
-    // Reject symlinks at the top level
     if path.symlink_metadata().map(|m| m.file_type().is_symlink()).unwrap_or(false) {
-        eprintln!("  warning: skipping symlink {}", path.display());
         return None;
     }
 
     if path.is_dir() {
         let mut hasher = Sha256::new();
         let mut files = collect_files(path);
-        files.sort(); // deterministic order
+        files.sort();
         for file in files {
             let relative = file.strip_prefix(path).unwrap_or(&file);
             hasher.update(relative.to_string_lossy().as_bytes());
@@ -201,11 +284,6 @@ pub fn skill_hash(path: &Path) -> Option<String> {
         }
         Some(hex::encode(hasher.finalize()))
     } else if path.is_file() {
-        // Skip symlink files
-        if path.symlink_metadata().map(|m| m.file_type().is_symlink()).unwrap_or(false) {
-            eprintln!("  warning: skipping symlink {}", path.display());
-            return None;
-        }
         let content = std::fs::read(path).ok()?;
         let mut hasher = Sha256::new();
         hasher.update(&content);
@@ -215,40 +293,44 @@ pub fn skill_hash(path: &Path) -> Option<String> {
     }
 }
 
-/// Collect all files in a directory recursively (public for push).
+/// Collect all files recursively. Skips symlinks and dotfiles.
+/// Public for integration tests.
+#[allow(dead_code)]
 pub fn collect_files_public(dir: &Path) -> Vec<PathBuf> {
     collect_files(dir)
 }
 
-/// Collect all files in a directory recursively. Skips symlinks and dotfiles.
 fn collect_files(dir: &Path) -> Vec<PathBuf> {
     let mut files = Vec::new();
-    if let Ok(entries) = std::fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            let name = entry.file_name();
-            if name.to_string_lossy().starts_with('.') {
-                continue;
-            }
-            let ft = match entry.file_type() {
-                Ok(ft) => ft,
-                Err(_) => continue,
-            };
-            if ft.is_symlink() {
-                continue;
-            }
-            let path = entry.path();
-            if ft.is_dir() {
-                files.extend(collect_files(&path));
-            } else {
-                files.push(path);
-            }
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return files,
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        if name.to_string_lossy().starts_with('.') {
+            continue;
+        }
+        let ft = match entry.file_type() {
+            Ok(ft) => ft,
+            Err(_) => continue,
+        };
+        if ft.is_symlink() {
+            continue;
+        }
+        let path = entry.path();
+        if ft.is_dir() {
+            files.extend(collect_files(&path));
+        } else {
+            files.push(path);
         }
     }
     files
 }
 
+// ── List operations ─────────────────────────────────────────────────
+
 /// List all available skills in a registry.
-/// Detects both flat files (name.md) and directory skills (name/).
 pub fn list_skills(repo_dir: &Path, reg: &Registry) -> Result<Vec<String>> {
     let base = match &reg.path {
         Some(p) => repo_dir.join(p),
@@ -263,13 +345,11 @@ pub fn list_skills(repo_dir: &Path, reg: &Registry) -> Result<Vec<String>> {
     for entry in std::fs::read_dir(&base)? {
         let entry = entry?;
         let ft = entry.file_type()?;
-        // Skip symlinks entirely
         if ft.is_symlink() {
             continue;
         }
         let path = entry.path();
         let name = entry.file_name().to_string_lossy().to_string();
-        // Skip dotfiles
         if name.starts_with('.') {
             continue;
         }

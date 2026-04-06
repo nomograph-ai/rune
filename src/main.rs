@@ -6,7 +6,7 @@ mod registry;
 mod setup;
 
 use anyhow::Result;
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -20,10 +20,12 @@ use std::path::PathBuf;
         Example:\n  \
         rune setup                    # one-time: create config, install hook\n  \
         rune init                     # per-project: create manifest\n  \
-        rune add tidy --from public   # add a skill from a registry\n  \
+        rune add tidy --from runes    # add a skill from a registry\n  \
         rune sync                     # pull latest from registries\n  \
         rune check                    # show drift between local and registries\n  \
         rune push tidy                # push local changes back to registry\n  \
+        rune browse k-dense           # discover upstream skills\n  \
+        rune import scanpy@k-dense    # import from upstream\n  \
         rune ls                       # list skills and their status"
 )]
 struct Cli {
@@ -33,6 +35,10 @@ struct Cli {
     /// Project directory (defaults to current directory)
     #[arg(long, global = true)]
     project: Option<PathBuf>,
+
+    /// Use cached registries without pulling (no network)
+    #[arg(long, global = true)]
+    offline: bool,
 }
 
 #[derive(Subcommand)]
@@ -44,21 +50,21 @@ enum Commands {
     Init,
 
     /// Add a skill from a registry to this project
-    ///
-    /// Example: rune add tidy --from public
     Add {
-        /// Skill name (without .md extension)
+        /// Skill name
         skill: String,
-
-        /// Pin to a specific registry (optional -- resolved by priority if omitted)
+        /// Pin to a specific registry
         #[arg(long)]
         from: Option<String>,
     },
 
+    /// Remove a skill from this project
+    Remove {
+        /// Skill name to remove
+        skill: String,
+    },
+
     /// Check for drift between local skills and registries
-    ///
-    /// Shows which skills have changed locally or in the registry.
-    /// When called with --file, checks only the specified skill.
     Check {
         /// Check a specific file (used by hook)
         #[arg(long)]
@@ -66,25 +72,15 @@ enum Commands {
     },
 
     /// Sync all skills from registries (pull updates)
-    ///
-    /// Pulls the latest version of each skill from its registry.
-    /// Only overwrites files that have actually changed.
     Sync,
 
     /// Push a local skill change back to its registry
-    ///
-    /// Commits and pushes the local version of a skill to the
-    /// registry it came from. Other projects will get this change
-    /// on their next `rune sync`.
     Push {
         /// Skill name to push
         skill: String,
     },
 
     /// List skills and their sync status, or browse a registry
-    ///
-    /// Without --registry, lists project skills and their drift status.
-    /// With --registry, lists all available skills in that registry.
     Ls {
         /// List available skills in a specific registry
         #[arg(long)]
@@ -92,33 +88,21 @@ enum Commands {
     },
 
     /// Browse available skills in an upstream registry
-    ///
-    /// Lists skills with descriptions. Use to discover what's available
-    /// before importing.
     Browse {
         /// Registry name (e.g., k-dense, anthropic)
         registry: String,
     },
 
-    /// Import a skill from an upstream registry into your own registry
-    ///
-    /// Copies the skill and adds pedigree metadata tracking where it
-    /// came from. Does not auto-push -- review first, then `rune push`.
-    ///
-    /// Example: rune import scanpy@k-dense --to arcana
+    /// Import a skill from an upstream registry into your own
     Import {
         /// Skill name with registry: skill@registry
         skill_ref: String,
-
-        /// Target registry to import into (defaults to first writable)
+        /// Target registry to import into
         #[arg(long)]
         to: Option<String>,
     },
 
     /// Check imported skills for upstream updates
-    ///
-    /// Compares imported skills against their upstream source to detect
-    /// when the upstream has published changes since import.
     Upstream {
         /// Suppress output if no updates (for hooks)
         #[arg(long)]
@@ -127,23 +111,35 @@ enum Commands {
 
     /// Show diff between imported skill and upstream version
     Diff {
-        /// Skill name to diff
+        /// Skill name
         skill: String,
     },
 
-    /// Pull upstream changes for an imported skill into your registry
+    /// Pull upstream changes for an imported skill
     Update {
-        /// Skill name to update
+        /// Skill name
         skill: String,
-
         /// Overwrite local modifications
         #[arg(long)]
         force: bool,
+    },
+
+    /// Diagnose configuration and registry health
+    Doctor,
+
+    /// Generate shell completions
+    Completions {
+        /// Shell (zsh, bash, fish)
+        shell: String,
     },
 }
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
+
+    if cli.offline {
+        registry::set_offline(true);
+    }
 
     let project_dir = cli.project.unwrap_or_else(|| {
         std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
@@ -153,12 +149,12 @@ fn main() -> Result<()> {
         Commands::Setup => setup::setup(),
         Commands::Init => setup::init(&project_dir),
         Commands::Add { skill, from } => commands::add(&project_dir, &skill, from.as_deref()),
+        Commands::Remove { skill } => commands::remove(&project_dir, &skill),
         Commands::Check { file } => {
             let results = commands::check(&project_dir, file.as_deref())?;
             for (name, reg, status) in &results {
                 println!("  {name:<24} {status:<30} registry: {reg}");
             }
-            // Exit non-zero if any drift (for hook usage)
             if results
                 .iter()
                 .any(|(_, _, s)| !matches!(s, commands::SkillStatus::Current))
@@ -185,5 +181,21 @@ fn main() -> Result<()> {
         Commands::Upstream { quiet } => commands::upstream(quiet),
         Commands::Diff { skill } => commands::diff(&skill),
         Commands::Update { skill, force } => commands::update(&skill, force),
+        Commands::Doctor => commands::doctor(),
+        Commands::Completions { shell } => {
+            let shell = match shell.as_str() {
+                "zsh" => clap_complete::Shell::Zsh,
+                "bash" => clap_complete::Shell::Bash,
+                "fish" => clap_complete::Shell::Fish,
+                other => anyhow::bail!("Unknown shell: {other}. Use zsh, bash, or fish."),
+            };
+            clap_complete::generate(
+                shell,
+                &mut Cli::command(),
+                "rune",
+                &mut std::io::stdout(),
+            );
+            Ok(())
+        }
     }
 }

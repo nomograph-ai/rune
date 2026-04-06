@@ -260,7 +260,7 @@ pub fn add(project_dir: &Path, skill_name: &str, registry_name: Option<&str>) ->
     Ok(())
 }
 
-/// Push a local skill change back to its registry.
+/// Push a local skill change back to its registry. All git operations via CLI.
 pub fn push(project_dir: &Path, skill_name: &str) -> Result<()> {
     registry::validate_skill_name(skill_name)?;
     let config = Config::load()?;
@@ -274,11 +274,7 @@ pub fn push(project_dir: &Path, skill_name: &str) -> Result<()> {
     let reg = resolve_registry(skill_name, entry, &config)?;
 
     if reg.readonly {
-        anyhow::bail!(
-            "Registry {} is read-only. Cannot push {}.",
-            reg.name,
-            skill_name
-        );
+        anyhow::bail!("Registry {} is read-only. Cannot push {}.", reg.name, skill_name);
     }
 
     let repo_dir = registry::ensure_registry(reg)?;
@@ -302,49 +298,38 @@ pub fn push(project_dir: &Path, skill_name: &str) -> Result<()> {
     }
     registry::copy_skill(local_path, &reg_path)?;
 
-    // Git add + commit + push
-    let repo = git2::Repository::open(&repo_dir)
-        .context("Failed to open registry repo")?;
-
-    let mut index = repo.index()?;
-    // Add all files in the skill (handles both file and directory)
-    if local_path.is_dir() {
-        let files = crate::registry::collect_files_public(&reg_path);
-        for file in files {
-            let relative = file.strip_prefix(&repo_dir).unwrap_or(&file);
-            index.add_path(relative)?;
-        }
-    } else {
-        let relative = reg_path.strip_prefix(&repo_dir).unwrap_or(&reg_path);
-        index.add_path(relative)?;
-    }
-    index.write()?;
-
-    let tree_id = index.write_tree()?;
-    let tree = repo.find_tree(tree_id)?;
-    let head = repo.head()?.peel_to_commit()?;
-
-    let sig = repo
-        .signature()
-        .or_else(|_| git2::Signature::now("rune", "rune@localhost"))
-        .context("Failed to create git signature")?;
-
-    let message = format!("update {skill_name}\n\nPushed by rune");
-    repo.commit(Some("HEAD"), &sig, &sig, &message, &tree, &[&head])?;
-
-    // Push via git CLI
-    let status = std::process::Command::new("git")
-        .args(["push", "--quiet", "origin", "--"])
-        .arg(&reg.branch)
-        .current_dir(&repo_dir)
-        .status()
-        .context("Failed to run git push")?;
-
-    if !status.success() {
-        anyhow::bail!("git push failed for registry {}", reg.name);
-    }
+    // Commit and push via git CLI
+    registry::commit_and_push(&repo_dir, skill_name, &reg.branch)?;
 
     eprintln!("Pushed {skill_name} to {}", reg.name);
+    Ok(())
+}
+
+/// Remove a skill from the project manifest and optionally delete local files.
+pub fn remove(project_dir: &Path, skill_name: &str) -> Result<()> {
+    registry::validate_skill_name(skill_name)?;
+    let mut manifest = Manifest::load(project_dir)?;
+
+    if manifest.skills.remove(skill_name).is_none() {
+        anyhow::bail!("{skill_name} not in manifest");
+    }
+    manifest.save(project_dir)?;
+
+    // Remove local skill files
+    let skills_dir = Manifest::skills_dir(project_dir);
+    let dir_path = skills_dir.join(skill_name);
+    let file_path = skills_dir.join(format!("{skill_name}.md"));
+
+    if dir_path.exists() {
+        std::fs::remove_dir_all(&dir_path)?;
+        eprintln!("Removed {skill_name} (directory)");
+    } else if file_path.exists() {
+        std::fs::remove_file(&file_path)?;
+        eprintln!("Removed {skill_name} (file)");
+    } else {
+        eprintln!("Removed {skill_name} from manifest (no local files found)");
+    }
+
     Ok(())
 }
 
@@ -475,8 +460,9 @@ pub fn import(skill_ref: &str, target_name: Option<&str>) -> Result<()> {
         None => skill_name.to_string(),
     };
 
-    // Get upstream commit hash
-    let upstream_commit = pedigree::repo_head_short(&source_dir)
+    // Get the skill-specific commit hash from the upstream registry
+    let skill_rel = registry::skill_path_relative(source_reg, skill_name);
+    let upstream_commit = registry::skill_commit(&source_dir, &skill_rel)
         .unwrap_or_else(|| "unknown".to_string());
 
     // Reject symlink sources
@@ -527,7 +513,6 @@ pub fn import(skill_ref: &str, target_name: Option<&str>) -> Result<()> {
 /// Check imported skills for upstream updates.
 pub fn upstream(quiet: bool) -> Result<()> {
     let config = Config::load()?;
-    let cache_dir = Config::cache_dir()?;
     let mut updates = Vec::new();
 
     // Scan all writable registries for skills with pedigree
@@ -566,13 +551,10 @@ pub fn upstream(quiet: bool) -> Result<()> {
                 }
             };
 
-            // Check upstream HEAD
-            let source_dir = cache_dir.join(&source_reg.name);
-            if !source_dir.exists() {
-                let _ = registry::ensure_registry(source_reg);
-            }
-
-            let upstream_commit = pedigree::repo_head_short(&source_dir)
+            // Check the specific skill's last commit in the upstream registry
+            let source_dir = registry::ensure_registry(source_reg)?;
+            let skill_rel = registry::skill_path_relative(source_reg, skill_name);
+            let upstream_commit = registry::skill_commit(&source_dir, &skill_rel)
                 .unwrap_or_else(|| "unknown".to_string());
 
             if upstream_commit != imported_commit {
@@ -743,7 +725,8 @@ pub fn update(skill_name: &str, force: bool) -> Result<()> {
         anyhow::bail!("{skill_name} no longer exists in upstream {}", source_reg.name);
     }
 
-    let upstream_commit = pedigree::repo_head_short(&source_dir)
+    let skill_rel = registry::skill_path_relative(source_reg, skill_name);
+    let upstream_commit = registry::skill_commit(&source_dir, &skill_rel)
         .unwrap_or_else(|| "unknown".to_string());
 
     // Remove old and copy new
@@ -812,5 +795,68 @@ pub fn ls_registry(registry_name: &str) -> Result<()> {
         }
     }
 
+    Ok(())
+}
+
+/// Diagnose configuration and registry health.
+pub fn doctor() -> Result<()> {
+    eprintln!("rune doctor\n");
+
+    // Config
+    let config_path = Config::path()?;
+    if config_path.exists() {
+        eprintln!("  config: {} ✓", config_path.display());
+    } else {
+        eprintln!("  config: {} MISSING", config_path.display());
+        eprintln!("  run: rune setup");
+        return Ok(());
+    }
+
+    let config = Config::load()?;
+
+    // Validate registries
+    let mut names = std::collections::HashSet::new();
+    for reg in &config.registry {
+        if !names.insert(&reg.name) {
+            eprintln!("  registry {}: DUPLICATE NAME", reg.name);
+            continue;
+        }
+        if reg.url.is_empty() {
+            eprintln!("  registry {}: EMPTY URL", reg.name);
+            continue;
+        }
+
+        let cache_dir = Config::cache_dir()?;
+        let repo_dir = cache_dir.join(&reg.name);
+        let ro = if reg.readonly { " (readonly)" } else { "" };
+
+        if repo_dir.exists() {
+            let skills = registry::list_skills(&repo_dir, reg).unwrap_or_default();
+            eprintln!("  registry {}{ro}: {} skills ✓", reg.name, skills.len());
+        } else {
+            eprintln!(
+                "  registry {}{ro}: not cached (will clone on first use)",
+                reg.name
+            );
+        }
+    }
+
+    // Hook
+    let hook_path = Config::config_dir()?.join("hook.sh");
+    if hook_path.exists() {
+        eprintln!("  hook: {} ✓", hook_path.display());
+    } else {
+        eprintln!("  hook: not installed");
+        eprintln!("  run: rune setup");
+    }
+
+    // Offline
+    if registry::is_offline() {
+        eprintln!("  mode: offline");
+    } else {
+        eprintln!("  mode: online");
+    }
+
+    eprintln!();
     Ok(())
 }

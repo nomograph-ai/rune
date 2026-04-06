@@ -217,13 +217,20 @@ pub fn url_to_slug(url: &str) -> String {
     }
 }
 
-/// Get the current HEAD commit short hash for a git repo using git2.
+/// Get the current HEAD commit short hash for a git repo.
+/// Used by integration tests. Production code uses registry::skill_commit.
+#[allow(dead_code)]
 pub fn repo_head_short(repo_dir: &Path) -> Option<String> {
-    let repo = git2::Repository::open(repo_dir).ok()?;
-    let head = repo.head().ok()?;
-    let commit = head.peel_to_commit().ok()?;
-    let id = commit.id();
-    Some(format!("{:.7}", id))
+    let output = std::process::Command::new("git")
+        .args(["rev-parse", "--short", "HEAD"])
+        .current_dir(repo_dir)
+        .output()
+        .ok()?;
+    if output.status.success() {
+        Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    } else {
+        None
+    }
 }
 
 /// Get today's date as YYYY-MM-DD. Pure Rust, no shell commands.
