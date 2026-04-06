@@ -359,6 +359,10 @@ pub fn ls(project_dir: &Path) -> Result<()> {
     }
 
     for (skill_name, entry) in &manifest.skills {
+        if let Err(e) = registry::validate_skill_name(skill_name) {
+            eprintln!("  {skill_name}: {e}");
+            continue;
+        }
         match check_skill(skill_name, entry, &config, project_dir) {
             Ok((name, reg, status)) => {
                 println!("  {name:<24} {status:<30} registry: {reg}");
@@ -420,6 +424,7 @@ pub fn browse(registry_name: &str) -> Result<()> {
 pub fn import(skill_ref: &str, target_name: Option<&str>) -> Result<()> {
     let config = Config::load()?;
     let (skill_name, source_name) = parse_skill_ref(skill_ref)?;
+    registry::validate_skill_name(skill_name)?;
 
     // Resolve source registry
     let source_reg = config
@@ -601,6 +606,7 @@ pub fn upstream(quiet: bool) -> Result<()> {
 
 /// Show diff between imported skill and upstream version.
 pub fn diff(skill_name: &str) -> Result<()> {
+    registry::validate_skill_name(skill_name)?;
     let config = Config::load()?;
 
     // Find the skill in a writable registry
@@ -691,6 +697,7 @@ pub fn diff(skill_name: &str) -> Result<()> {
 
 /// Pull upstream changes for an imported skill.
 pub fn update(skill_name: &str, force: bool) -> Result<()> {
+    registry::validate_skill_name(skill_name)?;
     let config = Config::load()?;
 
     let (reg, repo_dir) = find_imported_skill(&config, skill_name)?;

@@ -35,8 +35,9 @@ pub fn ensure_registry(reg: &Registry) -> Result<PathBuf> {
 /// Clone a registry repo via git CLI (respects system credential helpers).
 fn clone(url: &str, dest: &Path, branch: &str) -> Result<()> {
     // Use -- to prevent URL/branch from being interpreted as flags
+    // --depth 1 prevents DoS via large repositories
     let status = std::process::Command::new("git")
-        .args(["clone", "--quiet", "--branch", branch, "--single-branch", "--"])
+        .args(["clone", "--quiet", "--depth", "1", "--branch", branch, "--single-branch", "--"])
         .arg(url)
         .arg(dest)
         .status()
