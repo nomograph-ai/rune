@@ -1,21 +1,11 @@
 <svg viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg" font-family="'Courier New', monospace">
-  <rect x="0" y="0" width="256" height="256" fill="#faf6ed" stroke="#2c2417" stroke-width="4"/>
-  <!-- Header bar -->
-  <rect x="12" y="12" width="232" height="36" fill="#2c2417"/>
-  <text x="128" y="37" text-anchor="middle" font-size="20" fill="#faf6ed" font-weight="bold">rune</text>
-  <!-- Runic inscription mark: three vertical strokes with connecting lines -->
-  <line x1="78" y1="80" x2="78" y2="200" stroke="#2c2417" stroke-width="8" stroke-linecap="round"/>
-  <line x1="128" y1="80" x2="128" y2="200" stroke="#2c2417" stroke-width="8" stroke-linecap="round"/>
-  <line x1="178" y1="80" x2="178" y2="200" stroke="#2c2417" stroke-width="8" stroke-linecap="round"/>
-  <!-- Cross strokes (runic) -->
-  <line x1="78" y1="120" x2="128" y2="100" stroke="#2c2417" stroke-width="5" stroke-linecap="round"/>
-  <line x1="128" y1="140" x2="178" y2="120" stroke="#2c2417" stroke-width="5" stroke-linecap="round"/>
-  <line x1="78" y1="170" x2="128" y2="180" stroke="#6b5d4f" stroke-width="3" stroke-linecap="round"/>
-  <line x1="128" y1="180" x2="178" y2="170" stroke="#6b5d4f" stroke-width="3" stroke-linecap="round"/>
-  <!-- Dots at intersections -->
-  <circle cx="78" cy="120" r="5" fill="#2c2417"/>
-  <circle cx="128" cy="140" r="5" fill="#2c2417"/>
-  <circle cx="178" cy="120" r="5" fill="#2c2417"/>
-  <!-- Subtle base line -->
-  <line x1="60" y1="218" x2="196" y2="218" stroke="#c4b99a" stroke-width="2"/>
+  <rect x="0" y="0" width="256" height="256" fill="#faf6ed"/>
+  <rect x="20" y="20" width="216" height="216" fill="none" stroke="#2c2417" stroke-width="4"/>
+  <rect x="28" y="28" width="200" height="36" fill="#2c2417"/>
+  <text x="128" y="53" text-anchor="middle" font-size="20" fill="#faf6ed" font-weight="bold">rune</text>
+  <!-- Ansuz rune (communication, knowledge) -->
+  <line x1="128" y1="78" x2="128" y2="210" stroke="#2c2417" stroke-width="8" stroke-linecap="round"/>
+  <line x1="128" y1="110" x2="168" y2="90" stroke="#2c2417" stroke-width="6" stroke-linecap="round"/>
+  <line x1="128" y1="140" x2="168" y2="120" stroke="#2c2417" stroke-width="6" stroke-linecap="round"/>
+  <line x1="60" y1="224" x2="196" y2="224" stroke="#c4b99a" stroke-width="2"/>
 </svg>
