@@ -479,6 +479,11 @@ pub fn import(skill_ref: &str, target_name: Option<&str>) -> Result<()> {
     let upstream_commit = pedigree::repo_head_short(&source_dir)
         .unwrap_or_else(|| "unknown".to_string());
 
+    // Reject symlink sources
+    if source_path.symlink_metadata()?.file_type().is_symlink() {
+        anyhow::bail!("Refusing to import symlink: {}", source_path.display());
+    }
+
     // Copy to target as a directory skill
     let target_skill_dir = if source_path.is_dir() {
         target_dir.join(skill_name)
