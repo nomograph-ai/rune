@@ -217,48 +217,39 @@ pub fn url_to_slug(url: &str) -> String {
     }
 }
 
-/// Get the current HEAD commit short hash for a git repo.
+/// Get the current HEAD commit short hash for a git repo using git2.
 pub fn repo_head_short(repo_dir: &Path) -> Option<String> {
-    let output = std::process::Command::new("git")
-        .args(["rev-parse", "--short", "HEAD"])
-        .current_dir(repo_dir)
-        .output()
-        .ok()?;
-
-    if output.status.success() {
-        Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
-    } else {
-        None
-    }
+    let repo = git2::Repository::open(repo_dir).ok()?;
+    let head = repo.head().ok()?;
+    let commit = head.peel_to_commit().ok()?;
+    let id = commit.id();
+    Some(format!("{:.7}", id))
 }
 
-/// Get today's date as YYYY-MM-DD using the `date` command.
-/// Falls back to epoch-based calculation if `date` is unavailable.
+/// Get today's date as YYYY-MM-DD. Pure Rust, no shell commands.
 pub fn today() -> String {
-    // Use system date command for correctness
-    let output = std::process::Command::new("date")
-        .args(["+%Y-%m-%d"])
-        .output();
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    epoch_to_date(secs)
+}
 
-    match output {
-        Ok(out) if out.status.success() => {
-            String::from_utf8_lossy(&out.stdout).trim().to_string()
-        }
-        _ => {
-            // Fallback: epoch seconds to date (approximate, no leap year handling)
-            let secs = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs();
-            let days = secs / 86400;
-            // Good enough for a fallback -- within 1 day
-            let year = 1970 + days / 365;
-            let day_of_year = days % 365;
-            let month = day_of_year / 30 + 1;
-            let day = day_of_year % 30 + 1;
-            format!("{year}-{month:02}-{day:02}")
-        }
-    }
+/// Convert epoch seconds to YYYY-MM-DD. Handles leap years correctly.
+fn epoch_to_date(epoch_secs: u64) -> String {
+    let mut days = (epoch_secs / 86400) as i64;
+    // Civil date from day count (algorithm from Howard Hinnant)
+    days += 719468; // shift epoch from 1970-01-01 to 0000-03-01
+    let era = if days >= 0 { days } else { days - 146096 } / 146097;
+    let doe = (days - era * 146097) as u32;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let y = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    format!("{y}-{m:02}-{d:02}")
 }
 
 #[cfg(test)]
