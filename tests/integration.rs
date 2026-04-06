@@ -147,6 +147,57 @@ fn test_import_requires_at_sign() {
 }
 
 #[test]
+fn test_path_traversal_rejected() {
+    let malicious_names = [
+        "../etc/passwd",
+        "../../.ssh/id_rsa",
+        "skill/../../escape",
+        ".hidden",
+        "-flag",
+        "null\0byte",
+    ];
+    for name in &malicious_names {
+        let result = rune::registry::validate_skill_name(name);
+        assert!(
+            result.is_err(),
+            "Expected rejection for malicious name: {name}"
+        );
+    }
+}
+
+#[test]
+fn test_valid_skill_names_accepted() {
+    let valid_names = [
+        "tidy",
+        "feedback-audit",
+        "gitlab",
+        "claude-api",
+        "scanpy",
+        "my_skill_123",
+    ];
+    for name in &valid_names {
+        let result = rune::registry::validate_skill_name(name);
+        assert!(result.is_ok(), "Expected acceptance for valid name: {name}");
+    }
+}
+
+#[test]
+fn test_url_to_slug_ssh_format() {
+    assert_eq!(
+        rune::pedigree::url_to_slug("git@github.com:owner/repo.git"),
+        "owner/repo"
+    );
+    assert_eq!(
+        rune::pedigree::url_to_slug("https://github.com/owner/repo.git"),
+        "owner/repo"
+    );
+    assert_eq!(
+        rune::pedigree::url_to_slug("https://gitlab.com/group/subgroup/repo"),
+        "subgroup/repo"
+    );
+}
+
+#[test]
 fn test_pedigree_roundtrip_through_file() {
     let tmp = tempfile::tempdir().unwrap();
     let skill_dir = tmp.path().join("test-skill");

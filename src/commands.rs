@@ -121,6 +121,10 @@ pub fn check(project_dir: &Path, file_filter: Option<&str>) -> Result<Vec<(Strin
     let mut results = Vec::new();
 
     for (skill_name, entry) in &manifest.skills {
+        if let Err(e) = registry::validate_skill_name(skill_name) {
+            eprintln!("  {skill_name}: {e}");
+            continue;
+        }
         if let Some(filter) = file_filter {
             let filter_stem = Path::new(filter)
                 .file_stem()
@@ -150,6 +154,10 @@ pub fn sync(project_dir: &Path) -> Result<u32> {
     let mut count = 0;
 
     for (skill_name, entry) in &manifest.skills {
+        if let Err(e) = registry::validate_skill_name(skill_name) {
+            eprintln!("  {skill_name}: {e}");
+            continue;
+        }
         let reg = match resolve_registry(skill_name, entry, &config) {
             Ok(r) => r,
             Err(e) => {
@@ -198,6 +206,7 @@ pub fn sync(project_dir: &Path) -> Result<u32> {
 
 /// Add a skill from a registry to the project manifest and sync it.
 pub fn add(project_dir: &Path, skill_name: &str, registry_name: Option<&str>) -> Result<()> {
+    registry::validate_skill_name(skill_name)?;
     let config = Config::load()?;
 
     // Resolve the registry
@@ -253,6 +262,7 @@ pub fn add(project_dir: &Path, skill_name: &str, registry_name: Option<&str>) ->
 
 /// Push a local skill change back to its registry.
 pub fn push(project_dir: &Path, skill_name: &str) -> Result<()> {
+    registry::validate_skill_name(skill_name)?;
     let config = Config::load()?;
     let manifest = Manifest::load(project_dir)?;
 
@@ -316,17 +326,16 @@ pub fn push(project_dir: &Path, skill_name: &str) -> Result<()> {
 
     let sig = repo
         .signature()
-        .unwrap_or_else(|_| git2::Signature::now("rune", "rune@localhost").unwrap());
+        .or_else(|_| git2::Signature::now("rune", "rune@localhost"))
+        .context("Failed to create git signature")?;
 
-    let message = format!(
-        "update {skill_name}\n\nPushed by rune from {}",
-        project_dir.display()
-    );
+    let message = format!("update {skill_name}\n\nPushed by rune");
     repo.commit(Some("HEAD"), &sig, &sig, &message, &tree, &[&head])?;
 
     // Push via git CLI
     let status = std::process::Command::new("git")
-        .args(["push", "--quiet", "origin", &reg.branch])
+        .args(["push", "--quiet", "origin", "--"])
+        .arg(&reg.branch)
         .current_dir(&repo_dir)
         .status()
         .context("Failed to run git push")?;
@@ -394,9 +403,10 @@ pub fn browse(registry_name: &str) -> Result<()> {
         let desc = pedigree
             .description
             .unwrap_or_else(|| "-".to_string());
-        // Truncate description for display
-        let desc_short = if desc.len() > 70 {
-            format!("{}...", &desc[..67])
+        // Truncate description for display (safe for multi-byte UTF-8)
+        let desc_short = if desc.chars().count() > 70 {
+            let truncated: String = desc.chars().take(67).collect();
+            format!("{truncated}...")
         } else {
             desc
         };

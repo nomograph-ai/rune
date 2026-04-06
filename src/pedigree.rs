@@ -193,10 +193,22 @@ impl Pedigree {
 }
 
 /// Extract owner/repo slug from a git URL.
-/// Handles https://github.com/owner/repo.git, git@host:owner/repo.git, etc.
+/// Handles HTTPS, SSH, and git:// URLs.
+///   https://github.com/owner/repo.git → owner/repo
+///   git@github.com:owner/repo.git     → owner/repo
 pub fn url_to_slug(url: &str) -> String {
     let url = url.trim_end_matches(".git");
-    // Try splitting on / and taking last two segments
+    // Handle SSH URLs: git@host:owner/repo
+    if let Some(path) = url.split_once(':').and_then(|(prefix, path)| {
+        if prefix.contains('@') && !path.starts_with('/') {
+            Some(path)
+        } else {
+            None
+        }
+    }) {
+        return path.to_string();
+    }
+    // Handle HTTPS/git:// URLs: split on / and take last two segments
     let parts: Vec<&str> = url.split('/').collect();
     if parts.len() >= 2 {
         format!("{}/{}", parts[parts.len() - 2], parts[parts.len() - 1])
@@ -342,6 +354,22 @@ mod tests {
         assert_eq!(
             url_to_slug("https://github.com/anthropics/skills"),
             "anthropics/skills"
+        );
+    }
+
+    #[test]
+    fn url_to_slug_ssh() {
+        assert_eq!(
+            url_to_slug("git@github.com:K-Dense-AI/claude-scientific-skills.git"),
+            "K-Dense-AI/claude-scientific-skills"
+        );
+    }
+
+    #[test]
+    fn url_to_slug_ssh_gitlab() {
+        assert_eq!(
+            url_to_slug("git@gitlab.com:dunn.dev/arcana.git"),
+            "dunn.dev/arcana"
         );
     }
 
