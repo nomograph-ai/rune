@@ -343,6 +343,7 @@ fn list_skills_requires_skill_md() {
         path: None,
         branch: "main".to_string(),
         readonly: false,
+        source: "git".to_string(),
     };
     let skills = rune::registry::list_skills(base, &reg).unwrap();
     assert_eq!(skills, vec!["valid-skill"]);
@@ -366,6 +367,7 @@ fn list_skills_skips_symlink_dirs() {
         path: None,
         branch: "main".to_string(),
         readonly: false,
+        source: "git".to_string(),
     };
     let skills = rune::registry::list_skills(base, &reg).unwrap();
     assert_eq!(skills, vec!["real"]);
