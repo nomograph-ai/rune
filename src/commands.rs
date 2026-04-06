@@ -483,11 +483,7 @@ pub fn import(skill_ref: &str, target_name: Option<&str>) -> Result<()> {
 
     // Write pedigree into the imported skill
     let ped = Pedigree {
-        origin: Some({
-            let url = source_reg.url.trim_end_matches(".git");
-            let parts: Vec<&str> = url.rsplit('/').take(2).collect();
-            format!("{}/{}", parts.get(1).unwrap_or(&""), parts.first().unwrap_or(&""))
-        }),
+        origin: Some(pedigree::url_to_slug(&source_reg.url)),
         origin_path: Some(origin_path),
         imported: Some(pedigree::today()),
         upstream_commit: Some(upstream_commit.clone()),
@@ -536,9 +532,7 @@ pub fn upstream(quiet: bool) -> Result<()> {
 
             // Find the source registry by matching origin against registry URLs
             let source_reg = config.registry.iter().find(|r| {
-                let url_slug = r.url.trim_end_matches(".git");
-                let parts: Vec<&str> = url_slug.rsplit('/').take(2).collect();
-                let slug = format!("{}/{}", parts.get(1).unwrap_or(&""), parts.first().unwrap_or(&""));
+                let slug = pedigree::url_to_slug(&r.url);
                 origin.contains(&slug) || origin == r.name
             });
 
@@ -581,10 +575,7 @@ pub fn upstream(quiet: bool) -> Result<()> {
     }
 
     eprintln!("rune: {} upstream update(s) available\n", updates.len());
-    eprintln!(
-        "  {:<20} {:<30} {:<10} {:<10} {}",
-        "SKILL", "ORIGIN", "LOCAL", "UPSTREAM", "STATUS"
-    );
+    eprintln!("  {:<20} {:<30} {:<10} {:<10} STATUS", "SKILL", "ORIGIN", "LOCAL", "UPSTREAM");
 
     for (name, origin, local, upstream, modified) in &updates {
         let status = if *modified { "MODIFIED" } else { "UPDATED" };
@@ -612,17 +603,15 @@ pub fn diff(skill_name: &str) -> Result<()> {
     }
 
     let origin = ped.origin.as_deref().unwrap_or("unknown");
-    let origin_path = ped.origin_path.as_deref().unwrap_or(skill_name);
+    let ped_origin_path = ped.origin_path.as_deref().unwrap_or(skill_name);
 
     // Find source registry
     let source_reg = config
         .registry
         .iter()
         .find(|r| {
-            let url_slug = r.url.trim_end_matches(".git");
-            let parts: Vec<&str> = url_slug.rsplit('/').take(2).collect();
-            let slug = format!("{}/{}", parts.get(1).unwrap_or(&""), parts.first().unwrap_or(&""));
-            origin.contains(&slug)
+            let slug = pedigree::url_to_slug(&r.url);
+            origin.contains(&slug) || origin == r.name
         })
         .with_context(|| format!("Source registry for {origin} not in config"))?;
 
@@ -633,20 +622,8 @@ pub fn diff(skill_name: &str) -> Result<()> {
         anyhow::bail!("{skill_name} no longer exists in upstream {}", source_reg.name);
     }
 
-    // Use git diff for the comparison
-    let local_file = if skill_path.is_dir() {
-        skill_path.join("SKILL.md")
-    } else {
-        skill_path.clone()
-    };
-    let upstream_file = if source_path.is_dir() {
-        source_path.join("SKILL.md")
-    } else {
-        source_path.clone()
-    };
-
     eprintln!("origin: {origin}");
-    eprintln!("origin_path: {origin_path}");
+    eprintln!("origin_path: {ped_origin_path}");
     eprintln!(
         "imported: {} (commit {})",
         ped.imported.as_deref().unwrap_or("unknown"),
@@ -654,19 +631,49 @@ pub fn diff(skill_name: &str) -> Result<()> {
     );
     eprintln!();
 
-    let status = std::process::Command::new("diff")
-        .args([
-            "-u",
-            "--label", &format!("{skill_name} (imported)"),
-            "--label", &format!("{skill_name} (upstream)"),
-        ])
-        .arg(&local_file)
-        .arg(&upstream_file)
-        .status()
-        .context("Failed to run diff")?;
+    // Diff the full directory tree if both are directories
+    if skill_path.is_dir() && source_path.is_dir() {
+        let status = std::process::Command::new("diff")
+            .args([
+                "-ru",
+                "--label", &format!("{skill_name} (imported)"),
+                "--label", &format!("{skill_name} (upstream)"),
+            ])
+            .arg(&skill_path)
+            .arg(&source_path)
+            .status()
+            .context("Failed to run diff")?;
 
-    if status.success() {
-        eprintln!("No differences in SKILL.md (other files may differ).");
+        if status.success() {
+            eprintln!("No differences.");
+        }
+    } else {
+        // Fall back to single-file diff
+        let local_file = if skill_path.is_dir() {
+            skill_path.join("SKILL.md")
+        } else {
+            skill_path.clone()
+        };
+        let upstream_file = if source_path.is_dir() {
+            source_path.join("SKILL.md")
+        } else {
+            source_path.clone()
+        };
+
+        let status = std::process::Command::new("diff")
+            .args([
+                "-u",
+                "--label", &format!("{skill_name} (imported)"),
+                "--label", &format!("{skill_name} (upstream)"),
+            ])
+            .arg(&local_file)
+            .arg(&upstream_file)
+            .status()
+            .context("Failed to run diff")?;
+
+        if status.success() {
+            eprintln!("No differences.");
+        }
     }
 
     Ok(())
@@ -702,10 +709,8 @@ pub fn update(skill_name: &str, force: bool) -> Result<()> {
         .registry
         .iter()
         .find(|r| {
-            let url_slug = r.url.trim_end_matches(".git");
-            let parts: Vec<&str> = url_slug.rsplit('/').take(2).collect();
-            let slug = format!("{}/{}", parts.get(1).unwrap_or(&""), parts.first().unwrap_or(&""));
-            origin.contains(&slug)
+            let slug = pedigree::url_to_slug(&r.url);
+            origin.contains(&slug) || origin == r.name
         })
         .with_context(|| format!("Source registry for {origin} not in config"))?;
 
