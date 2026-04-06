@@ -3,7 +3,7 @@ use std::path::Path;
 
 /// Pedigree metadata from SKILL.md frontmatter.
 /// Tracks where a skill came from and whether it's been modified.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Pedigree {
     pub name: Option<String>,
     pub description: Option<String>,
@@ -15,7 +15,7 @@ pub struct Pedigree {
 }
 
 impl Pedigree {
-    /// Parse pedigree fields from a SKILL.md file's YAML frontmatter.
+    /// Parse pedigree fields from a skill path (file or directory).
     pub fn from_skill(path: &Path) -> Result<Self> {
         let skill_file = if path.is_dir() {
             path.join("SKILL.md")
@@ -34,6 +34,7 @@ impl Pedigree {
     }
 
     /// Parse YAML frontmatter from markdown content.
+    /// Handles the --- delimited block at the start of a markdown file.
     fn parse_frontmatter(content: &str) -> Result<Self> {
         let content = content.trim();
         if !content.starts_with("---") {
@@ -41,12 +42,16 @@ impl Pedigree {
         }
 
         let rest = &content[3..];
-        let end = rest.find("---").unwrap_or(rest.len());
+        let end = match rest.find("\n---") {
+            Some(pos) => pos,
+            None => return Ok(Self::default()),
+        };
         let frontmatter = &rest[..end];
 
         let mut pedigree = Self::default();
         for line in frontmatter.lines() {
             let line = line.trim();
+            // Only split on first colon to handle descriptions with colons
             if let Some((key, value)) = line.split_once(':') {
                 let key = key.trim();
                 let value = value.trim().trim_matches('"').trim_matches('\'');
@@ -57,7 +62,7 @@ impl Pedigree {
                     "origin_path" => pedigree.origin_path = Some(value.to_string()),
                     "imported" => pedigree.imported = Some(value.to_string()),
                     "upstream_commit" => {
-                        pedigree.upstream_commit = Some(value.to_string())
+                        pedigree.upstream_commit = Some(value.to_string());
                     }
                     "modified" => pedigree.modified = Some(value == "true"),
                     _ => {}
@@ -69,7 +74,7 @@ impl Pedigree {
     }
 
     /// Write pedigree fields into a SKILL.md file's frontmatter.
-    /// Preserves existing fields and adds/updates pedigree fields.
+    /// Preserves existing non-pedigree fields and adds/updates pedigree fields.
     pub fn write_to_skill(&self, path: &Path) -> Result<()> {
         let skill_file = if path.is_dir() {
             path.join("SKILL.md")
@@ -90,19 +95,23 @@ impl Pedigree {
     /// Update frontmatter in markdown content with pedigree fields.
     fn update_frontmatter(&self, content: &str) -> String {
         let content = content.trim();
+
         if !content.starts_with("---") {
-            // No frontmatter -- add one
             let fm = self.to_frontmatter_string();
             return format!("---\n{fm}---\n\n{content}");
         }
 
         let rest = &content[3..];
-        let end = rest.find("---").unwrap_or(rest.len());
+        let end = match rest.find("\n---") {
+            Some(pos) => pos,
+            None => {
+                let fm = self.to_frontmatter_string();
+                return format!("---\n{fm}---\n\n{content}");
+            }
+        };
         let existing_fm = &rest[..end];
-        let body = &rest[end + 3..];
+        let body = &rest[end + 4..]; // skip \n---
 
-        // Parse existing fields, preserving order for non-pedigree fields
-        let mut lines: Vec<String> = Vec::new();
         let pedigree_keys = [
             "origin",
             "origin_path",
@@ -111,17 +120,21 @@ impl Pedigree {
             "modified",
         ];
 
-        for line in existing_fm.lines() {
-            let trimmed = line.trim();
-            if trimmed.is_empty() {
-                continue;
-            }
-            if let Some((key, _)) = trimmed.split_once(':') {
-                if !pedigree_keys.contains(&key.trim()) {
-                    lines.push(line.to_string());
+        // Keep existing non-pedigree fields
+        let mut lines: Vec<String> = existing_fm
+            .lines()
+            .filter(|line| {
+                let trimmed = line.trim();
+                if trimmed.is_empty() {
+                    return false;
                 }
-            }
-        }
+                match trimmed.split_once(':') {
+                    Some((key, _)) => !pedigree_keys.contains(&key.trim()),
+                    None => true,
+                }
+            })
+            .map(|line| line.to_string())
+            .collect();
 
         // Add pedigree fields
         if let Some(ref origin) = self.origin {
@@ -143,7 +156,6 @@ impl Pedigree {
         format!("---\n{}\n---{body}", lines.join("\n"))
     }
 
-    /// Format pedigree as frontmatter string (for new files).
     fn to_frontmatter_string(&self) -> String {
         let mut lines = Vec::new();
         if let Some(ref name) = self.name {
@@ -174,13 +186,26 @@ impl Pedigree {
         }
     }
 
-    /// Has pedigree (was imported from upstream).
+    /// Whether this skill was imported from an upstream source.
     pub fn has_origin(&self) -> bool {
         self.origin.is_some()
     }
 }
 
-/// Get the current HEAD commit short hash for a registry repo.
+/// Extract owner/repo slug from a git URL.
+/// Handles https://github.com/owner/repo.git, git@host:owner/repo.git, etc.
+pub fn url_to_slug(url: &str) -> String {
+    let url = url.trim_end_matches(".git");
+    // Try splitting on / and taking last two segments
+    let parts: Vec<&str> = url.split('/').collect();
+    if parts.len() >= 2 {
+        format!("{}/{}", parts[parts.len() - 2], parts[parts.len() - 1])
+    } else {
+        url.to_string()
+    }
+}
+
+/// Get the current HEAD commit short hash for a git repo.
 pub fn repo_head_short(repo_dir: &Path) -> Option<String> {
     let output = std::process::Command::new("git")
         .args(["rev-parse", "--short", "HEAD"])
@@ -195,30 +220,33 @@ pub fn repo_head_short(repo_dir: &Path) -> Option<String> {
     }
 }
 
-/// Get today's date as YYYY-MM-DD.
+/// Get today's date as YYYY-MM-DD using the `date` command.
+/// Falls back to epoch-based calculation if `date` is unavailable.
 pub fn today() -> String {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    let days = now / 86400;
-    let years = 1970 + (days * 400 / 146097);
-    // Approximate -- good enough for date stamps
-    let remaining = days - ((years - 1970) * 365 + (years - 1969) / 4 - (years - 1901) / 100 + (years - 1601) / 400);
-    let months = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-    let mut month = 0;
-    let mut day = remaining;
-    for (i, &m) in months.iter().enumerate() {
-        if day < m {
-            month = i + 1;
-            break;
+    // Use system date command for correctness
+    let output = std::process::Command::new("date")
+        .args(["+%Y-%m-%d"])
+        .output();
+
+    match output {
+        Ok(out) if out.status.success() => {
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
         }
-        day -= m;
+        _ => {
+            // Fallback: epoch seconds to date (approximate, no leap year handling)
+            let secs = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            let days = secs / 86400;
+            // Good enough for a fallback -- within 1 day
+            let year = 1970 + days / 365;
+            let day_of_year = days % 365;
+            let month = day_of_year / 30 + 1;
+            let day = day_of_year % 30 + 1;
+            format!("{year}-{month:02}-{day:02}")
+        }
     }
-    if month == 0 {
-        month = 12;
-    }
-    format!("{years}-{month:02}-{:02}", day + 1)
 }
 
 #[cfg(test)]
@@ -227,48 +255,36 @@ mod tests {
 
     #[test]
     fn parse_pedigree_from_frontmatter() {
-        let content = r#"---
-name: scanpy
-description: Single-cell RNA sequencing
-origin: k-dense/claude-scientific-skills
-origin_path: skills/scanpy
-imported: 2026-04-06
-upstream_commit: a1b2c3d
-modified: false
----
-
-# Scanpy
-"#;
+        let content = "---\nname: scanpy\ndescription: Single-cell RNA sequencing\norigin: k-dense/claude-scientific-skills\norigin_path: skills/scanpy\nimported: 2026-04-06\nupstream_commit: a1b2c3d\nmodified: false\n---\n\n# Scanpy\n";
         let p = Pedigree::parse_frontmatter(content).unwrap();
         assert_eq!(p.name.as_deref(), Some("scanpy"));
-        assert_eq!(p.origin.as_deref(), Some("k-dense/claude-scientific-skills"));
+        assert_eq!(
+            p.origin.as_deref(),
+            Some("k-dense/claude-scientific-skills")
+        );
         assert_eq!(p.upstream_commit.as_deref(), Some("a1b2c3d"));
         assert_eq!(p.modified, Some(false));
     }
 
     #[test]
     fn parse_without_pedigree() {
-        let content = r#"---
-name: tidy
-description: Ship-ready checklist
----
-
-# Tidy
-"#;
+        let content = "---\nname: tidy\ndescription: Ship-ready checklist\n---\n\n# Tidy\n";
         let p = Pedigree::parse_frontmatter(content).unwrap();
         assert_eq!(p.name.as_deref(), Some("tidy"));
         assert!(!p.has_origin());
     }
 
     #[test]
-    fn update_frontmatter_adds_pedigree() {
-        let content = r#"---
-name: scanpy
-description: Single-cell RNA sequencing
----
+    fn parse_no_frontmatter() {
+        let content = "# Just a heading\n\nSome content.";
+        let p = Pedigree::parse_frontmatter(content).unwrap();
+        assert!(p.name.is_none());
+        assert!(!p.has_origin());
+    }
 
-# Scanpy
-"#;
+    #[test]
+    fn update_frontmatter_adds_pedigree() {
+        let content = "---\nname: scanpy\ndescription: Single-cell RNA sequencing\n---\n\n# Scanpy\n";
         let p = Pedigree {
             origin: Some("k-dense".to_string()),
             imported: Some("2026-04-06".to_string()),
@@ -280,6 +296,60 @@ description: Single-cell RNA sequencing
         assert!(updated.contains("origin: k-dense"));
         assert!(updated.contains("imported: 2026-04-06"));
         assert!(updated.contains("upstream_commit: abc123"));
+        assert!(updated.contains("modified: false"));
         assert!(updated.contains("name: scanpy"));
+        // Body preserved
+        assert!(updated.contains("# Scanpy"));
+    }
+
+    #[test]
+    fn update_frontmatter_replaces_existing_pedigree() {
+        let content = "---\nname: scanpy\norigin: old-source\nimported: 2025-01-01\nupstream_commit: old123\n---\n\n# Scanpy\n";
+        let p = Pedigree {
+            origin: Some("new-source".to_string()),
+            imported: Some("2026-04-06".to_string()),
+            upstream_commit: Some("new456".to_string()),
+            modified: Some(false),
+            ..Default::default()
+        };
+        let updated = p.update_frontmatter(content);
+        assert!(updated.contains("origin: new-source"));
+        assert!(updated.contains("upstream_commit: new456"));
+        assert!(!updated.contains("old-source"));
+        assert!(!updated.contains("old123"));
+        // Non-pedigree fields preserved
+        assert!(updated.contains("name: scanpy"));
+    }
+
+    #[test]
+    fn url_to_slug_https() {
+        assert_eq!(
+            url_to_slug("https://github.com/K-Dense-AI/claude-scientific-skills.git"),
+            "K-Dense-AI/claude-scientific-skills"
+        );
+    }
+
+    #[test]
+    fn url_to_slug_gitlab() {
+        assert_eq!(
+            url_to_slug("https://gitlab.com/dunn.dev/runes.git"),
+            "dunn.dev/runes"
+        );
+    }
+
+    #[test]
+    fn url_to_slug_no_git_suffix() {
+        assert_eq!(
+            url_to_slug("https://github.com/anthropics/skills"),
+            "anthropics/skills"
+        );
+    }
+
+    #[test]
+    fn today_returns_valid_date() {
+        let date = today();
+        assert_eq!(date.len(), 10); // YYYY-MM-DD
+        assert_eq!(&date[4..5], "-");
+        assert_eq!(&date[7..8], "-");
     }
 }
