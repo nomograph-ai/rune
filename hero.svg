@@ -1,113 +1,4 @@
-<svg viewBox="0 0 1200 630" xmlns="http://www.w3.org/2000/svg" font-family="'Courier New', monospace">
-  <rect x="0" y="0" width="1200" height="630" fill="#faf6ed" stroke="#2c2417" stroke-width="3"/>
-
-  <!-- Title bar -->
-  <rect x="40" y="30" width="1120" height="50" fill="#2c2417"/>
-  <text x="600" y="62" text-anchor="middle" font-size="24" fill="#faf6ed" font-weight="bold">rune</text>
-  <text x="1100" y="62" text-anchor="end" font-size="14" fill="#6b5d4f">skill registry manager</text>
-
-  <!-- Subtitle -->
-  <text x="600" y="110" text-anchor="middle" font-size="14" fill="#6b5d4f">syncs inscribed knowledge from git registries into .claude/skills/</text>
-  <line x1="200" y1="125" x2="1000" y2="125" stroke="#c4b99a" stroke-width="1"/>
-
-  <!-- Left: Registries -->
-  <text x="180" y="160" text-anchor="middle" font-size="13" fill="#2c2417" font-weight="bold">REGISTRIES</text>
-  <text x="180" y="178" text-anchor="middle" font-size="10" fill="#6b5d4f">any git repo</text>
-
-  <!-- Public registry box -->
-  <rect x="50" y="195" width="260" height="120" fill="none" stroke="#2c2417" stroke-width="2"/>
-  <rect x="50" y="195" width="260" height="24" fill="#2c2417"/>
-  <text x="180" y="213" text-anchor="middle" font-size="12" fill="#faf6ed">team-skills (public)</text>
-  <text x="65" y="238" font-size="11" fill="#6b5d4f">code-review.md</text>
-  <text x="65" y="255" font-size="11" fill="#6b5d4f">deploy.md</text>
-  <text x="65" y="272" font-size="11" fill="#6b5d4f">testing.md</text>
-  <text x="65" y="289" font-size="11" fill="#6b5d4f">tidy.md</text>
-  <text x="185" y="238" font-size="11" fill="#6b5d4f">docs.md</text>
-  <text x="185" y="255" font-size="11" fill="#6b5d4f">ci.md</text>
-  <text x="185" y="272" font-size="11" fill="#6b5d4f">security.md</text>
-
-  <!-- Private registry box -->
-  <rect x="50" y="340" width="260" height="100" fill="none" stroke="#2c2417" stroke-width="2"/>
-  <rect x="50" y="340" width="260" height="24" fill="#2c2417"/>
-  <text x="180" y="358" text-anchor="middle" font-size="12" fill="#faf6ed">my-skills (private)</text>
-  <text x="65" y="383" font-size="11" fill="#6b5d4f">writing-style.md</text>
-  <text x="65" y="400" font-size="11" fill="#6b5d4f">meeting-prep.md</text>
-  <text x="65" y="417" font-size="11" fill="#6b5d4f">internal-tools.md</text>
-  <text x="185" y="383" font-size="11" fill="#6b5d4f">oncall.md</text>
-  <text x="185" y="400" font-size="11" fill="#6b5d4f">runbooks.md</text>
-
-  <!-- Center: rune CLI -->
-  <rect x="430" y="210" width="180" height="230" fill="none" stroke="#2c2417" stroke-width="3"/>
-  <rect x="430" y="210" width="180" height="28" fill="#2c2417"/>
-  <text x="520" y="230" text-anchor="middle" font-size="14" fill="#faf6ed" font-weight="bold">rune</text>
-  <text x="445" y="260" font-size="11" fill="#2c2417">check</text>
-  <text x="445" y="277" font-size="10" fill="#6b5d4f">  detect drift</text>
-  <text x="445" y="300" font-size="11" fill="#2c2417">sync</text>
-  <text x="445" y="317" font-size="10" fill="#6b5d4f">  pull updates</text>
-  <text x="445" y="340" font-size="11" fill="#2c2417">push</text>
-  <text x="445" y="357" font-size="10" fill="#6b5d4f">  send upstream</text>
-  <text x="445" y="380" font-size="11" fill="#2c2417">add / ls</text>
-  <text x="445" y="397" font-size="10" fill="#6b5d4f">  manage skills</text>
-
-  <!-- Right: Projects -->
-  <text x="870" y="160" text-anchor="middle" font-size="13" fill="#2c2417" font-weight="bold">PROJECTS</text>
-  <text x="870" y="178" text-anchor="middle" font-size="10" fill="#6b5d4f">.claude/skills/</text>
-
-  <rect x="740" y="195" width="210" height="85" fill="none" stroke="#2c2417" stroke-width="2"/>
-  <rect x="740" y="195" width="210" height="24" fill="#2c2417"/>
-  <text x="845" y="213" text-anchor="middle" font-size="12" fill="#faf6ed">project-A</text>
-  <text x="755" y="237" font-size="10" fill="#6b5d4f">tidy.md</text>
-  <text x="755" y="252" font-size="10" fill="#6b5d4f">writing-style.md</text>
-  <text x="755" y="267" font-size="10" fill="#6b5d4f">rune.toml</text>
-
-  <rect x="740" y="300" width="210" height="85" fill="none" stroke="#2c2417" stroke-width="2"/>
-  <rect x="740" y="300" width="210" height="24" fill="#2c2417"/>
-  <text x="845" y="318" text-anchor="middle" font-size="12" fill="#faf6ed">project-B</text>
-  <text x="755" y="342" font-size="10" fill="#6b5d4f">deploy.md</text>
-  <text x="755" y="357" font-size="10" fill="#6b5d4f">testing.md</text>
-  <text x="755" y="372" font-size="10" fill="#6b5d4f">rune.toml</text>
-
-  <rect x="740" y="405" width="210" height="70" fill="none" stroke="#2c2417" stroke-width="2"/>
-  <rect x="740" y="405" width="210" height="24" fill="#2c2417"/>
-  <text x="845" y="423" text-anchor="middle" font-size="12" fill="#faf6ed">project-C</text>
-  <text x="755" y="447" font-size="10" fill="#6b5d4f">code-review.md</text>
-  <text x="755" y="462" font-size="10" fill="#6b5d4f">rune.toml</text>
-
-  <!-- Arrows: registries -> rune -->
-  <line x1="310" y1="255" x2="430" y2="295" stroke="#2c2417" stroke-width="2" marker-end="url(#arr)"/>
-  <line x1="310" y1="390" x2="430" y2="355" stroke="#2c2417" stroke-width="2" marker-end="url(#arr)"/>
-  <text x="358" y="258" font-size="9" fill="#6b5d4f">git pull</text>
-  <text x="358" y="388" font-size="9" fill="#6b5d4f">git pull</text>
-
-  <!-- Arrows: rune -> projects -->
-  <line x1="610" y1="285" x2="740" y2="240" stroke="#2c2417" stroke-width="2" marker-end="url(#arr)"/>
-  <line x1="610" y1="325" x2="740" y2="340" stroke="#2c2417" stroke-width="2" marker-end="url(#arr)"/>
-  <line x1="610" y1="370" x2="740" y2="440" stroke="#2c2417" stroke-width="2" marker-end="url(#arr)"/>
-  <text x="665" y="248" font-size="9" fill="#6b5d4f">sync</text>
-  <text x="665" y="336" font-size="9" fill="#6b5d4f">sync</text>
-  <text x="665" y="418" font-size="9" fill="#6b5d4f">sync</text>
-
-  <!-- Push arrow (dashed, right to left) -->
-  <line x1="740" y1="260" x2="610" y2="305" stroke="#6b5d4f" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arr-dim)"/>
-  <text x="665" y="272" font-size="9" fill="#c4b99a">push</text>
-
-  <!-- Bottom: key points -->
-  <line x1="100" y1="500" x2="1100" y2="500" stroke="#c4b99a" stroke-width="1"/>
-  <text x="200" y="530" text-anchor="middle" font-size="12" fill="#2c2417" font-weight="bold">registries are git repos</text>
-  <text x="200" y="548" text-anchor="middle" font-size="10" fill="#6b5d4f">any host, any visibility</text>
-  <text x="200" y="563" text-anchor="middle" font-size="10" fill="#6b5d4f">public or private</text>
-
-  <text x="520" y="530" text-anchor="middle" font-size="12" fill="#2c2417" font-weight="bold">hook detects drift</text>
-  <text x="520" y="548" text-anchor="middle" font-size="10" fill="#6b5d4f">PostToolUse fires on</text>
-  <text x="520" y="563" text-anchor="middle" font-size="10" fill="#6b5d4f">.claude/skills/*.md edits</text>
-
-  <text x="870" y="530" text-anchor="middle" font-size="12" fill="#2c2417" font-weight="bold">agentskills.io compatible</text>
-  <text x="870" y="548" text-anchor="middle" font-size="10" fill="#6b5d4f">works with Claude Code, Cursor,</text>
-  <text x="870" y="563" text-anchor="middle" font-size="10" fill="#6b5d4f">Copilot, Gemini CLI</text>
-
-  <!-- Footer -->
-  <text x="600" y="610" text-anchor="middle" font-size="11" fill="#c4b99a">cargo install rune -- dunn.dev/rune</text>
-
+<svg viewBox="0 0 1200 430" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M 0 0 L 10 5 L 0 10 z" fill="#2c2417"/>
@@ -116,4 +7,113 @@
       <path d="M 0 0 L 10 5 L 0 10 z" fill="#c4b99a"/>
     </marker>
   </defs>
+  <rect x="0" y="0" width="1200" height="430" fill="#faf6ed" stroke="#2c2417" stroke-width="3"/>
+
+  <rect x="0" y="0" width="1200" height="36" fill="#2c2417"/>
+  <text x="16" y="24" font-family="'IBM Plex Mono', monospace" font-size="14" fill="#faf6ed" font-weight="bold">rune -- skill registry manager</text>
+  <text x="1184" y="24" font-family="'IBM Plex Mono', monospace" font-size="11" fill="#c4b99a" text-anchor="end">syncs inscribed knowledge from git registries</text>
+
+  <!-- Left: Registries -->
+  <rect x="40" y="60" width="260" height="280" fill="none" stroke="#c4b99a" stroke-width="1.5" stroke-dasharray="6,3"/>
+  <text x="170" y="82" font-family="'IBM Plex Mono', monospace" font-size="10" fill="#6b5d4f" text-anchor="middle" font-weight="bold">REGISTRIES</text>
+
+  <rect x="56" y="96" width="228" height="100" fill="none" stroke="#2c2417" stroke-width="1.5"/>
+  <rect x="56" y="96" width="228" height="22" fill="#2c2417"/>
+  <text x="170" y="112" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#faf6ed" text-anchor="middle">public (any git repo)</text>
+  <text x="72" y="134" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">tidy.md</text>
+  <text x="72" y="150" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">iconography.md</text>
+  <text x="72" y="166" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">research/SKILL.md</text>
+  <text x="180" y="134" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">gitlab/SKILL.md</text>
+  <text x="180" y="150" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">mirror.md</text>
+  <text x="180" y="166" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">release.md</text>
+
+  <rect x="56" y="210" width="228" height="80" fill="none" stroke="#2c2417" stroke-width="1.5"/>
+  <rect x="56" y="210" width="228" height="22" fill="#2c2417"/>
+  <text x="170" y="226" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#faf6ed" text-anchor="middle">private (authenticated)</text>
+  <text x="72" y="248" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">voice.md</text>
+  <text x="72" y="264" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">cadence.md</text>
+  <text x="72" y="280" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">glean.md</text>
+  <text x="180" y="248" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">gws.md</text>
+  <text x="180" y="264" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">dkg.md</text>
+  <text x="180" y="280" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">gcloud.md</text>
+
+  <text x="170" y="316" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f" text-anchor="middle">any git host, any visibility</text>
+
+  <!-- Arrows: registries -> rune -->
+  <line x1="300" y1="150" x2="390" y2="185" stroke="#2c2417" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="300" y1="250" x2="390" y2="215" stroke="#2c2417" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- Center: rune CLI -->
+  <rect x="400" y="100" width="200" height="240" fill="none" stroke="#2c2417" stroke-width="2.5"/>
+  <rect x="400" y="100" width="200" height="28" fill="#2c2417"/>
+  <text x="500" y="118" font-family="'IBM Plex Mono', monospace" font-size="12" fill="#faf6ed" text-anchor="middle" font-weight="bold">rune</text>
+
+  <text x="416" y="148" font-family="'IBM Plex Mono', monospace" font-size="10" fill="#2c2417" font-weight="bold">sync</text>
+  <text x="416" y="164" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">  pull updates from registries</text>
+
+  <text x="416" y="188" font-family="'IBM Plex Mono', monospace" font-size="10" fill="#2c2417" font-weight="bold">check</text>
+  <text x="416" y="204" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">  hash-based drift detection</text>
+
+  <text x="416" y="228" font-family="'IBM Plex Mono', monospace" font-size="10" fill="#2c2417" font-weight="bold">push</text>
+  <text x="416" y="244" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">  send local edits upstream</text>
+
+  <text x="416" y="268" font-family="'IBM Plex Mono', monospace" font-size="10" fill="#2c2417" font-weight="bold">add / ls</text>
+  <text x="416" y="284" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">  manage skills per project</text>
+
+  <text x="500" y="320" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f" text-anchor="middle">priority resolution</text>
+  <text x="500" y="334" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f" text-anchor="middle">directory skill support</text>
+
+  <!-- Arrows: rune -> projects -->
+  <line x1="600" y1="180" x2="690" y2="140" stroke="#2c2417" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="600" y1="200" x2="690" y2="215" stroke="#2c2417" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="600" y1="240" x2="690" y2="290" stroke="#2c2417" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- Push arrow back -->
+  <line x1="690" y1="160" x2="600" y2="195" stroke="#6b5d4f" stroke-width="1" stroke-dasharray="5,3" marker-end="url(#arr-dim)"/>
+
+  <!-- Right: Projects -->
+  <rect x="700" y="60" width="460" height="280" fill="none" stroke="#c4b99a" stroke-width="1.5" stroke-dasharray="6,3"/>
+  <text x="930" y="82" font-family="'IBM Plex Mono', monospace" font-size="10" fill="#6b5d4f" text-anchor="middle" font-weight="bold">PROJECTS (.claude/skills/)</text>
+
+  <rect x="716" y="96" width="200" height="72" fill="none" stroke="#2c2417" stroke-width="1.5"/>
+  <rect x="716" y="96" width="200" height="22" fill="#2c2417"/>
+  <text x="816" y="112" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#faf6ed" text-anchor="middle">project-A</text>
+  <text x="732" y="132" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">tidy.md, voice.md</text>
+  <text x="732" y="148" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">research/SKILL.md</text>
+  <text x="732" y="164" font-family="'IBM Plex Mono', monospace" font-size="8" fill="#c4b99a">rune.toml</text>
+
+  <rect x="716" y="182" width="200" height="72" fill="none" stroke="#2c2417" stroke-width="1.5"/>
+  <rect x="716" y="182" width="200" height="22" fill="#2c2417"/>
+  <text x="816" y="198" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#faf6ed" text-anchor="middle">project-B</text>
+  <text x="732" y="218" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">tidy.md, gitlab/SKILL.md</text>
+  <text x="732" y="234" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">mirror.md</text>
+  <text x="732" y="250" font-family="'IBM Plex Mono', monospace" font-size="8" fill="#c4b99a">rune.toml</text>
+
+  <rect x="716" y="268" width="200" height="52" fill="none" stroke="#2c2417" stroke-width="1.5"/>
+  <rect x="716" y="268" width="200" height="22" fill="#2c2417"/>
+  <text x="816" y="284" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#faf6ed" text-anchor="middle">project-C</text>
+  <text x="732" y="304" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">tidy.md, cadence.md</text>
+  <text x="732" y="316" font-family="'IBM Plex Mono', monospace" font-size="8" fill="#c4b99a">rune.toml</text>
+
+  <!-- Key points right side -->
+  <text x="940" y="120" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#2c2417" font-weight="bold">agentskills.io</text>
+  <text x="940" y="136" font-family="'IBM Plex Mono', monospace" font-size="8" fill="#6b5d4f">compatible</text>
+
+  <text x="940" y="196" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#2c2417" font-weight="bold">any agent</text>
+  <text x="940" y="212" font-family="'IBM Plex Mono', monospace" font-size="8" fill="#6b5d4f">Claude, Cursor,</text>
+  <text x="940" y="226" font-family="'IBM Plex Mono', monospace" font-size="8" fill="#6b5d4f">Copilot, Gemini</text>
+
+  <text x="940" y="276" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#2c2417" font-weight="bold">drift detection</text>
+  <text x="940" y="292" font-family="'IBM Plex Mono', monospace" font-size="8" fill="#6b5d4f">hash-based</text>
+
+  <!-- Footer -->
+  <line x1="40" y1="360" x2="1160" y2="360" stroke="#c4b99a" stroke-width="1"/>
+  <text x="600" y="380" font-family="'IBM Plex Mono', monospace" font-size="10" fill="#6b5d4f" text-anchor="middle">registries are git repos -- skills are markdown -- rune keeps them current</text>
+  <text x="590" y="408" text-anchor="middle" fill="#2c2417" font-family="'IBM Plex Mono', monospace" font-size="9" font-weight="600">Built with GitLab</text>
+  <g transform="translate(634, 397) scale(0.045)">
+    <path d="M282.83,170.73l-.27-.69-26.14-68.22a6.81,6.81,0,0,0-2.69-3.24,7,7,0,0,0-8,.43,7,7,0,0,0-2.32,3.52l-17.65,54H154.29l-17.65-54A6.86,6.86,0,0,0,134.32,99a7,7,0,0,0-8-.43,6.87,6.87,0,0,0-2.69,3.24L97.44,170l-.26.69a48.54,48.54,0,0,0,16.1,56.1l.09.07.24.17,39.82,29.82,19.7,14.91,12,9.06a8.07,8.07,0,0,0,9.76,0l12-9.06,19.7-14.91,40.06-30,.1-.08A48.56,48.56,0,0,0,282.83,170.73Z" fill="#E24329"/>
+    <path d="M282.83,170.73l-.27-.69a88.3,88.3,0,0,0-35.15,15.8L190,229.25c19.55,14.79,36.57,27.64,36.57,27.64l40.06-30,.1-.08A48.56,48.56,0,0,0,282.83,170.73Z" fill="#FC6D26"/>
+    <path d="M153.43,256.89l19.7,14.91,12,9.06a8.07,8.07,0,0,0,9.76,0l12-9.06,19.7-14.91S209.55,244,190,229.25C170.45,244,153.43,256.89,153.43,256.89Z" fill="#FCA326"/>
+    <path d="M132.58,185.84A88.19,88.19,0,0,0,97.44,170l-.26.69a48.54,48.54,0,0,0,16.1,56.1l.09.07.24.17,39.82,29.82s17-12.85,36.57-27.64Z" fill="#FC6D26"/>
+  </g>
 </svg>
