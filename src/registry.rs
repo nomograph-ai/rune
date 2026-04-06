@@ -51,33 +51,117 @@ pub fn is_offline() -> bool {
 
 // ── Ensure registry ─────────────────────────────────────────────────
 
-/// Ensure a registry is cloned and up to date. Returns the local path.
+/// Ensure a registry is cloned/downloaded and up to date. Returns the local path.
 /// Pulls at most once per invocation. Respects --offline flag.
 pub fn ensure_registry(reg: &Registry) -> Result<PathBuf> {
     let cache_dir = Config::cache_dir()?;
     let repo_dir = cache_dir.join(&reg.name);
 
-    if repo_dir.exists() {
-        if !is_offline() && !already_pulled(&reg.name) {
-            match pull(&repo_dir, &reg.branch) {
-                Ok(()) => mark_pulled(&reg.name),
-                Err(e) => {
-                    eprintln!("  warning: failed to update {}: {e}", reg.name);
-                    eprintln!("  using cached version");
-                }
-            }
+    if is_offline() {
+        if repo_dir.exists() {
+            return Ok(repo_dir);
         }
-    } else if is_offline() {
         anyhow::bail!(
             "Registry {} not cached and --offline is set. Run without --offline first.",
             reg.name
         );
-    } else {
-        clone(&reg.url, &repo_dir, &reg.branch)?;
-        mark_pulled(&reg.name);
     }
 
+    if already_pulled(&reg.name) {
+        return Ok(repo_dir);
+    }
+
+    if reg.source == "archive" {
+        ensure_archive_registry(reg, &repo_dir)?;
+    } else if repo_dir.exists() {
+        match pull(&repo_dir, &reg.branch) {
+            Ok(()) => {}
+            Err(e) => {
+                eprintln!("  warning: failed to update {}: {e}", reg.name);
+                eprintln!("  using cached version");
+            }
+        }
+    } else {
+        clone(&reg.url, &repo_dir, &reg.branch)?;
+    }
+
+    mark_pulled(&reg.name);
     Ok(repo_dir)
+}
+
+/// Download and extract an archive registry (GitHub/GitLab tarball).
+fn ensure_archive_registry(reg: &Registry, dest: &Path) -> Result<()> {
+    let archive_url = resolve_archive_url(&reg.url, &reg.branch)?;
+
+    let cache_dir = dest.parent().context("Invalid cache path")?;
+    std::fs::create_dir_all(cache_dir)?;
+
+    // Download tarball to temp file
+    let tmp_tar = cache_dir.join(format!(".{}-archive.tar.gz", reg.name));
+    let status = std::process::Command::new("curl")
+        .args([
+            "-fsSL", "--proto", "=https", "--max-redirs", "5",
+            "--max-time", "60", "-o",
+        ])
+        .arg(&tmp_tar)
+        .arg(&archive_url)
+        .status()
+        .context("Failed to run curl")?;
+
+    if !status.success() {
+        // Clean up temp file on failure
+        let _ = std::fs::remove_file(&tmp_tar);
+        anyhow::bail!("Failed to download archive for {}", reg.name);
+    }
+
+    // Extract -- GitHub/GitLab archives have a top-level directory
+    // we need to strip (--strip-components=1)
+    let tmp_extract = cache_dir.join(format!(".{}-extract", reg.name));
+    let _ = std::fs::remove_dir_all(&tmp_extract);
+    std::fs::create_dir_all(&tmp_extract)?;
+
+    let status = std::process::Command::new("tar")
+        .args(["xzf"])
+        .arg(&tmp_tar)
+        .args(["--strip-components=1", "-C"])
+        .arg(&tmp_extract)
+        .status()
+        .context("Failed to extract archive")?;
+
+    let _ = std::fs::remove_file(&tmp_tar);
+
+    if !status.success() {
+        let _ = std::fs::remove_dir_all(&tmp_extract);
+        anyhow::bail!("Failed to extract archive for {}", reg.name);
+    }
+
+    // Atomic swap: remove old, rename new
+    if dest.exists() {
+        std::fs::remove_dir_all(dest)?;
+    }
+    std::fs::rename(&tmp_extract, dest)?;
+
+    Ok(())
+}
+
+/// Resolve a git URL to an archive download URL.
+fn resolve_archive_url(url: &str, branch: &str) -> Result<String> {
+    let url = url.trim_end_matches(".git");
+
+    // GitHub: https://github.com/owner/repo → /archive/refs/heads/branch.tar.gz
+    if url.contains("github.com") {
+        return Ok(format!("{url}/archive/refs/heads/{branch}.tar.gz"));
+    }
+
+    // GitLab: https://gitlab.com/group/project → /-/archive/branch/project-branch.tar.gz
+    if url.contains("gitlab.com") {
+        let project = url.rsplit('/').next().unwrap_or("repo");
+        return Ok(format!("{url}/-/archive/{branch}/{project}-{branch}.tar.gz"));
+    }
+
+    anyhow::bail!(
+        "Cannot determine archive URL for {url}. Use source = \"git\" instead."
+    )
 }
 
 // ── Git operations ──────────────────────────────────────────────────

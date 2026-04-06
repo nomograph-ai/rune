@@ -9,7 +9,7 @@ pub struct Config {
     pub registry: Vec<Registry>,
 }
 
-/// A named git-based skill registry.
+/// A named skill registry. Can be git-based or HTTP archive.
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Registry {
     pub name: String,
@@ -23,6 +23,15 @@ pub struct Registry {
     /// Read-only registries cannot be pushed to. Defaults to false.
     #[serde(default)]
     pub readonly: bool,
+    /// How to fetch: "git" (default) or "archive" (download tarball).
+    /// Archive mode is faster for readonly registries -- downloads a
+    /// tarball instead of cloning. Supports GitHub and GitLab URLs.
+    #[serde(default = "default_source")]
+    pub source: String,
+}
+
+fn default_source() -> String {
+    "git".to_string()
 }
 
 fn default_branch() -> String {
