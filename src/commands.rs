@@ -3,6 +3,7 @@ use std::path::Path;
 
 use crate::config::Config;
 use crate::manifest::{Manifest, SkillEntry};
+use crate::pedigree::{self, Pedigree};
 use crate::registry;
 
 /// Status of a skill relative to its registry.
@@ -360,6 +361,406 @@ pub fn ls(project_dir: &Path) -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Parse a skill@registry reference.
+fn parse_skill_ref(skill_ref: &str) -> Result<(&str, &str)> {
+    skill_ref
+        .split_once('@')
+        .with_context(|| format!("Expected skill@registry format, got: {skill_ref}"))
+}
+
+/// Browse available skills in an upstream registry with descriptions.
+pub fn browse(registry_name: &str) -> Result<()> {
+    let config = Config::load()?;
+    let reg = config
+        .registry(registry_name)
+        .with_context(|| format!("Unknown registry: {registry_name}"))?;
+
+    let repo_dir = registry::ensure_registry(reg)?;
+    let skills = registry::list_skills(&repo_dir, reg)?;
+
+    if skills.is_empty() {
+        eprintln!("No skills in registry {registry_name}");
+        return Ok(());
+    }
+
+    let ro = if reg.readonly { " (read-only)" } else { "" };
+    eprintln!("{registry_name}{ro}: {} skills\n", skills.len());
+
+    for skill in &skills {
+        let path = registry::skill_path(&repo_dir, reg, skill);
+        let pedigree = Pedigree::from_skill(&path).unwrap_or_default();
+        let desc = pedigree
+            .description
+            .unwrap_or_else(|| "-".to_string());
+        // Truncate description for display
+        let desc_short = if desc.len() > 70 {
+            format!("{}...", &desc[..67])
+        } else {
+            desc
+        };
+        println!("  {skill:<24} {desc_short}");
+    }
+
+    Ok(())
+}
+
+/// Import a skill from an upstream registry into your own registry.
+pub fn import(skill_ref: &str, target_name: Option<&str>) -> Result<()> {
+    let config = Config::load()?;
+    let (skill_name, source_name) = parse_skill_ref(skill_ref)?;
+
+    // Resolve source registry
+    let source_reg = config
+        .registry(source_name)
+        .with_context(|| format!("Unknown registry: {source_name}"))?;
+
+    // Resolve target registry (first writable, or specified)
+    let target_reg = if let Some(name) = target_name {
+        config
+            .registry(name)
+            .with_context(|| format!("Unknown registry: {name}"))?
+    } else {
+        config
+            .registry
+            .iter()
+            .find(|r| !r.readonly)
+            .with_context(|| "No writable registry found. Specify --to <registry>.")?
+    };
+
+    if target_reg.readonly {
+        anyhow::bail!("Target registry {} is read-only", target_reg.name);
+    }
+
+    // Ensure both registries are current
+    let source_dir = registry::ensure_registry(source_reg)?;
+    let target_dir = registry::ensure_registry(target_reg)?;
+
+    // Find the skill in source
+    let source_path = registry::skill_path(&source_dir, source_reg, skill_name);
+    if !source_path.exists() {
+        anyhow::bail!(
+            "{skill_name} not found in registry {source_name}. Run `rune browse {source_name}` to see available skills."
+        );
+    }
+
+    // Check if already exists in target
+    let target_path = registry::skill_path(&target_dir, target_reg, skill_name);
+    if target_path.exists() {
+        anyhow::bail!(
+            "{skill_name} already exists in {target}. Use `rune update {skill_name}` to pull upstream changes.",
+            target = target_reg.name
+        );
+    }
+
+    // Determine the origin path (how the skill is stored in the upstream repo)
+    let origin_path = match &source_reg.path {
+        Some(p) => format!("{p}/{skill_name}"),
+        None => skill_name.to_string(),
+    };
+
+    // Get upstream commit hash
+    let upstream_commit = pedigree::repo_head_short(&source_dir)
+        .unwrap_or_else(|| "unknown".to_string());
+
+    // Copy to target as a directory skill
+    let target_skill_dir = if source_path.is_dir() {
+        target_dir.join(skill_name)
+    } else {
+        // Convert flat file to directory format on import
+        let dir = target_dir.join(skill_name);
+        std::fs::create_dir_all(&dir)?;
+        let dest = dir.join("SKILL.md");
+        std::fs::copy(&source_path, &dest)?;
+        eprintln!("  converted flat file to directory format");
+        dir
+    };
+
+    if source_path.is_dir() {
+        registry::copy_skill(&source_path, &target_skill_dir)?;
+    }
+
+    // Write pedigree into the imported skill
+    let ped = Pedigree {
+        origin: Some({
+            let url = source_reg.url.trim_end_matches(".git");
+            let parts: Vec<&str> = url.rsplit('/').take(2).collect();
+            format!("{}/{}", parts.get(1).unwrap_or(&""), parts.first().unwrap_or(&""))
+        }),
+        origin_path: Some(origin_path),
+        imported: Some(pedigree::today()),
+        upstream_commit: Some(upstream_commit.clone()),
+        modified: Some(false),
+        ..Default::default()
+    };
+    ped.write_to_skill(&target_skill_dir)?;
+
+    eprintln!(
+        "  imported {skill_name} from {source_name} → {target}",
+        target = target_reg.name
+    );
+    eprintln!("  pedigree: origin={source_name}, commit={upstream_commit}");
+    eprintln!();
+    eprintln!("  review: {}", target_skill_dir.display());
+    eprintln!("  push:   rune push {skill_name}");
+
+    Ok(())
+}
+
+/// Check imported skills for upstream updates.
+pub fn upstream(quiet: bool) -> Result<()> {
+    let config = Config::load()?;
+    let cache_dir = Config::cache_dir()?;
+    let mut updates = Vec::new();
+
+    // Scan all writable registries for skills with pedigree
+    for reg in &config.registry {
+        if reg.readonly {
+            continue;
+        }
+
+        let repo_dir = registry::ensure_registry(reg)?;
+        let skills = registry::list_skills(&repo_dir, reg)?;
+
+        for skill_name in &skills {
+            let skill_path = registry::skill_path(&repo_dir, reg, skill_name);
+            let ped = Pedigree::from_skill(&skill_path).unwrap_or_default();
+
+            if !ped.has_origin() {
+                continue; // Not imported, skip
+            }
+
+            let origin = ped.origin.as_deref().unwrap_or("unknown");
+            let imported_commit = ped.upstream_commit.as_deref().unwrap_or("unknown");
+
+            // Find the source registry by matching origin against registry URLs
+            let source_reg = config.registry.iter().find(|r| {
+                let url_slug = r.url.trim_end_matches(".git");
+                let parts: Vec<&str> = url_slug.rsplit('/').take(2).collect();
+                let slug = format!("{}/{}", parts.get(1).unwrap_or(&""), parts.first().unwrap_or(&""));
+                origin.contains(&slug) || origin == r.name
+            });
+
+            let source_reg = match source_reg {
+                Some(r) => r,
+                None => {
+                    if !quiet {
+                        eprintln!("  {skill_name}: origin {origin} not in config, skipping");
+                    }
+                    continue;
+                }
+            };
+
+            // Check upstream HEAD
+            let source_dir = cache_dir.join(&source_reg.name);
+            if !source_dir.exists() {
+                let _ = registry::ensure_registry(source_reg);
+            }
+
+            let upstream_commit = pedigree::repo_head_short(&source_dir)
+                .unwrap_or_else(|| "unknown".to_string());
+
+            if upstream_commit != imported_commit {
+                updates.push((
+                    skill_name.clone(),
+                    origin.to_string(),
+                    imported_commit.to_string(),
+                    upstream_commit,
+                    ped.modified.unwrap_or(false),
+                ));
+            }
+        }
+    }
+
+    if updates.is_empty() {
+        if !quiet {
+            eprintln!("All imported skills are current with upstream.");
+        }
+        return Ok(());
+    }
+
+    eprintln!("rune: {} upstream update(s) available\n", updates.len());
+    eprintln!(
+        "  {:<20} {:<30} {:<10} {:<10} {}",
+        "SKILL", "ORIGIN", "LOCAL", "UPSTREAM", "STATUS"
+    );
+
+    for (name, origin, local, upstream, modified) in &updates {
+        let status = if *modified { "MODIFIED" } else { "UPDATED" };
+        eprintln!("  {name:<20} {origin:<30} {local:<10} {upstream:<10} {status}");
+    }
+
+    eprintln!();
+    eprintln!("Run `rune diff <skill>` to review changes.");
+    eprintln!("Run `rune update <skill>` to pull updates.");
+
+    Ok(())
+}
+
+/// Show diff between imported skill and upstream version.
+pub fn diff(skill_name: &str) -> Result<()> {
+    let config = Config::load()?;
+
+    // Find the skill in a writable registry
+    let (reg, repo_dir) = find_imported_skill(&config, skill_name)?;
+    let skill_path = registry::skill_path(&repo_dir, reg, skill_name);
+    let ped = Pedigree::from_skill(&skill_path)?;
+
+    if !ped.has_origin() {
+        anyhow::bail!("{skill_name} was not imported from upstream (no pedigree)");
+    }
+
+    let origin = ped.origin.as_deref().unwrap_or("unknown");
+    let origin_path = ped.origin_path.as_deref().unwrap_or(skill_name);
+
+    // Find source registry
+    let source_reg = config
+        .registry
+        .iter()
+        .find(|r| {
+            let url_slug = r.url.trim_end_matches(".git");
+            let parts: Vec<&str> = url_slug.rsplit('/').take(2).collect();
+            let slug = format!("{}/{}", parts.get(1).unwrap_or(&""), parts.first().unwrap_or(&""));
+            origin.contains(&slug)
+        })
+        .with_context(|| format!("Source registry for {origin} not in config"))?;
+
+    let source_dir = registry::ensure_registry(source_reg)?;
+    let source_path = registry::skill_path(&source_dir, source_reg, skill_name);
+
+    if !source_path.exists() {
+        anyhow::bail!("{skill_name} no longer exists in upstream {}", source_reg.name);
+    }
+
+    // Use git diff for the comparison
+    let local_file = if skill_path.is_dir() {
+        skill_path.join("SKILL.md")
+    } else {
+        skill_path.clone()
+    };
+    let upstream_file = if source_path.is_dir() {
+        source_path.join("SKILL.md")
+    } else {
+        source_path.clone()
+    };
+
+    eprintln!("origin: {origin}");
+    eprintln!("origin_path: {origin_path}");
+    eprintln!(
+        "imported: {} (commit {})",
+        ped.imported.as_deref().unwrap_or("unknown"),
+        ped.upstream_commit.as_deref().unwrap_or("unknown")
+    );
+    eprintln!();
+
+    let status = std::process::Command::new("diff")
+        .args([
+            "-u",
+            "--label", &format!("{skill_name} (imported)"),
+            "--label", &format!("{skill_name} (upstream)"),
+        ])
+        .arg(&local_file)
+        .arg(&upstream_file)
+        .status()
+        .context("Failed to run diff")?;
+
+    if status.success() {
+        eprintln!("No differences in SKILL.md (other files may differ).");
+    }
+
+    Ok(())
+}
+
+/// Pull upstream changes for an imported skill.
+pub fn update(skill_name: &str, force: bool) -> Result<()> {
+    let config = Config::load()?;
+
+    let (reg, repo_dir) = find_imported_skill(&config, skill_name)?;
+    let skill_path = registry::skill_path(&repo_dir, reg, skill_name);
+    let ped = Pedigree::from_skill(&skill_path)?;
+
+    if !ped.has_origin() {
+        anyhow::bail!("{skill_name} was not imported from upstream (no pedigree)");
+    }
+
+    if ped.modified == Some(true) && !force {
+        eprintln!("WARNING: {skill_name} was modified locally since import.");
+        eprintln!("Local changes will be overwritten.");
+        eprintln!();
+        eprintln!("Options:");
+        eprintln!("  rune diff {skill_name}            # see what upstream changed");
+        eprintln!("  rune update {skill_name} --force   # overwrite local changes");
+        eprintln!("  (cancel)                          # keep local version");
+        anyhow::bail!("Use --force to overwrite local modifications");
+    }
+
+    let origin = ped.origin.as_deref().unwrap_or("unknown");
+
+    // Find source registry
+    let source_reg = config
+        .registry
+        .iter()
+        .find(|r| {
+            let url_slug = r.url.trim_end_matches(".git");
+            let parts: Vec<&str> = url_slug.rsplit('/').take(2).collect();
+            let slug = format!("{}/{}", parts.get(1).unwrap_or(&""), parts.first().unwrap_or(&""));
+            origin.contains(&slug)
+        })
+        .with_context(|| format!("Source registry for {origin} not in config"))?;
+
+    let source_dir = registry::ensure_registry(source_reg)?;
+    let source_path = registry::skill_path(&source_dir, source_reg, skill_name);
+
+    if !source_path.exists() {
+        anyhow::bail!("{skill_name} no longer exists in upstream {}", source_reg.name);
+    }
+
+    let upstream_commit = pedigree::repo_head_short(&source_dir)
+        .unwrap_or_else(|| "unknown".to_string());
+
+    // Remove old and copy new
+    if skill_path.exists() && skill_path.is_dir() {
+        std::fs::remove_dir_all(&skill_path)?;
+    }
+    registry::copy_skill(&source_path, &skill_path)?;
+
+    // Update pedigree
+    let new_ped = Pedigree {
+        imported: Some(pedigree::today()),
+        upstream_commit: Some(upstream_commit.clone()),
+        modified: Some(false),
+        origin: ped.origin,
+        origin_path: ped.origin_path,
+        ..Default::default()
+    };
+    new_ped.write_to_skill(&skill_path)?;
+
+    eprintln!(
+        "  updated {skill_name} from {} (commit {upstream_commit})",
+        source_reg.name
+    );
+    eprintln!("  push: rune push {skill_name}");
+
+    Ok(())
+}
+
+/// Find an imported skill in a writable registry.
+fn find_imported_skill<'a>(
+    config: &'a Config,
+    skill_name: &str,
+) -> Result<(&'a crate::config::Registry, std::path::PathBuf)> {
+    for reg in &config.registry {
+        if reg.readonly {
+            continue;
+        }
+        let repo_dir = registry::ensure_registry(reg)?;
+        let path = registry::skill_path(&repo_dir, reg, skill_name);
+        if path.exists() {
+            return Ok((reg, repo_dir));
+        }
+    }
+    anyhow::bail!("{skill_name} not found in any writable registry")
 }
 
 /// List all available skills in a specific registry.

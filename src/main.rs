@@ -1,6 +1,7 @@
 mod commands;
 mod config;
 mod manifest;
+mod pedigree;
 mod registry;
 mod setup;
 
@@ -89,6 +90,56 @@ enum Commands {
         #[arg(long)]
         registry: Option<String>,
     },
+
+    /// Browse available skills in an upstream registry
+    ///
+    /// Lists skills with descriptions. Use to discover what's available
+    /// before importing.
+    Browse {
+        /// Registry name (e.g., k-dense, anthropic)
+        registry: String,
+    },
+
+    /// Import a skill from an upstream registry into your own registry
+    ///
+    /// Copies the skill and adds pedigree metadata tracking where it
+    /// came from. Does not auto-push -- review first, then `rune push`.
+    ///
+    /// Example: rune import scanpy@k-dense --to arcana
+    Import {
+        /// Skill name with registry: skill@registry
+        skill_ref: String,
+
+        /// Target registry to import into (defaults to first writable)
+        #[arg(long)]
+        to: Option<String>,
+    },
+
+    /// Check imported skills for upstream updates
+    ///
+    /// Compares imported skills against their upstream source to detect
+    /// when the upstream has published changes since import.
+    Upstream {
+        /// Suppress output if no updates (for hooks)
+        #[arg(long)]
+        quiet: bool,
+    },
+
+    /// Show diff between imported skill and upstream version
+    Diff {
+        /// Skill name to diff
+        skill: String,
+    },
+
+    /// Pull upstream changes for an imported skill into your registry
+    Update {
+        /// Skill name to update
+        skill: String,
+
+        /// Overwrite local modifications
+        #[arg(long)]
+        force: bool,
+    },
 }
 
 fn main() -> Result<()> {
@@ -129,5 +180,10 @@ fn main() -> Result<()> {
                 commands::ls(&project_dir)
             }
         }
+        Commands::Browse { registry } => commands::browse(&registry),
+        Commands::Import { skill_ref, to } => commands::import(&skill_ref, to.as_deref()),
+        Commands::Upstream { quiet } => commands::upstream(quiet),
+        Commands::Diff { skill } => commands::diff(&skill),
+        Commands::Update { skill, force } => commands::update(&skill, force),
     }
 }
