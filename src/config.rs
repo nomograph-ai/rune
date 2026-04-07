@@ -28,6 +28,12 @@ pub struct Registry {
     /// tarball instead of cloning. Supports GitHub and GitLab URLs.
     #[serde(default = "default_source")]
     pub source: String,
+    /// Environment variable containing a PAT for HTTPS authentication.
+    /// When set, rune injects the token into git clone/fetch URLs as
+    /// `https://oauth2:TOKEN@host/path.git`. The env var is read at
+    /// runtime -- no secrets in config files.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub token_env: Option<String>,
 }
 
 fn default_source() -> String {

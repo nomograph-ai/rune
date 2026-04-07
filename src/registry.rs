@@ -125,7 +125,7 @@ pub fn ensure_registry(reg: &Registry) -> Result<PathBuf> {
     if reg.source == "archive" {
         ensure_archive_registry(reg, &repo_dir)?;
     } else if repo_dir.exists() {
-        match pull(&repo_dir, &reg.branch) {
+        match pull(&repo_dir, reg) {
             Ok(()) => {}
             Err(e) => {
                 eprintln!("  warning: failed to update {}: {e}", reg.name);
@@ -133,7 +133,7 @@ pub fn ensure_registry(reg: &Registry) -> Result<PathBuf> {
             }
         }
     } else {
-        clone(&reg.url, &repo_dir, &reg.branch)?;
+        clone(reg, &repo_dir, &reg.branch)?;
     }
 
     mark_pulled(&reg.name);
@@ -161,6 +161,14 @@ fn ensure_archive_registry(reg: &Registry, dest: &Path) -> Result<()> {
         "--max-time",
         "60",
     ];
+
+    // Add auth header if token available
+    let auth_header;
+    if let Ok(Some(token)) = resolve_token(reg) {
+        auth_header = format!("PRIVATE-TOKEN: {token}");
+        curl_args.push("-H");
+        curl_args.push(&auth_header);
+    }
 
     // If we have a cached etag and the dest exists, use conditional request
     let old_etag = if dest.exists() {
@@ -346,23 +354,98 @@ fn git_output(args: &[&str], dir: &Path) -> Result<String> {
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
-fn clone(url: &str, dest: &Path, branch: &str) -> Result<()> {
+/// Resolve the authenticated URL for a registry.
+///
+/// Token resolution order:
+/// 1. `token_env` -- explicit env var in config (highest priority)
+/// 2. `glab auth token` -- if URL contains gitlab.com and glab is installed
+/// 3. `gh auth token` -- if URL contains github.com and gh is installed
+/// 4. No auth -- use URL as-is (public repos, or system credential helpers)
+fn authenticated_url(reg: &Registry) -> Result<String> {
+    let token = resolve_token(reg)?;
+
+    let Some(token) = token else {
+        return Ok(reg.url.clone());
+    };
+
+    // Inject oauth2:token into HTTPS URL
+    if let Some(rest) = reg.url.strip_prefix("https://") {
+        Ok(format!("https://oauth2:{token}@{rest}"))
+    } else {
+        // Non-HTTPS URL with a token -- warn but proceed without injection
+        Ok(reg.url.clone())
+    }
+}
+
+/// Resolve a PAT for a registry.
+fn resolve_token(reg: &Registry) -> Result<Option<String>> {
+    // 1. Explicit env var takes priority
+    if let Some(ref env_var) = reg.token_env {
+        return match std::env::var(env_var) {
+            Ok(t) if !t.is_empty() => Ok(Some(t)),
+            Ok(_) => anyhow::bail!("${env_var} is set but empty (registry {})", reg.name),
+            Err(_) => anyhow::bail!(
+                "Registry {} requires token from ${env_var} but the variable is not set",
+                reg.name
+            ),
+        };
+    }
+
+    // 2. Auto-detect from glab/gh CLI based on URL host
+    if (reg.url.contains("gitlab.com") || reg.url.contains("gitlab."))
+        && let Some(token) = cli_token("glab", &["auth", "token"])
+    {
+        return Ok(Some(token));
+    }
+
+    if (reg.url.contains("github.com") || reg.url.contains("github."))
+        && let Some(token) = cli_token("gh", &["auth", "token"])
+    {
+        return Ok(Some(token));
+    }
+
+    // 3. No auth -- rely on system credential helpers or public access
+    Ok(None)
+}
+
+/// Try to get a token from a CLI tool. Returns None on any failure.
+fn cli_token(cmd: &str, args: &[&str]) -> Option<String> {
+    std::process::Command::new(cmd)
+        .args(args)
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .filter(|t| !t.is_empty())
+}
+
+fn clone(reg: &Registry, dest: &Path, branch: &str) -> Result<()> {
+    let url = authenticated_url(reg)?;
     let dest_str = dest.to_string_lossy();
     git_command(
         &[
             "clone", "--quiet", "--depth", "1", "--branch", branch,
-            "--single-branch", "--", url, &dest_str,
+            "--single-branch", "--", &url, &dest_str,
         ],
         None,
     )
 }
 
-fn pull(repo_dir: &Path, branch: &str) -> Result<()> {
+fn pull(repo_dir: &Path, reg: &Registry) -> Result<()> {
+    // If token auth, update the remote URL in case it changed
+    if reg.token_env.is_some() {
+        let url = authenticated_url(reg)?;
+        git_command(
+            &["remote", "set-url", "origin", &url],
+            Some(repo_dir),
+        )?;
+    }
+
     git_command(
-        &["fetch", "--quiet", "--depth", "1", "origin", "--", branch],
+        &["fetch", "--quiet", "--depth", "1", "origin", "--", &reg.branch],
         Some(repo_dir),
     )?;
-    let target = format!("origin/{branch}");
+    let target = format!("origin/{}", reg.branch);
     git_command(
         &["reset", "--quiet", "--hard", &target],
         Some(repo_dir),

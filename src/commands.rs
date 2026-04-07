@@ -961,13 +961,20 @@ pub fn doctor(project_dir: &Path) -> Result<()> {
         let repo_dir = cache_dir.join(&reg.name);
         let ro = if reg.readonly { color::dim(" (readonly)") } else { String::new() };
         let src = color::dim(&format!(" [{}]", reg.source));
+        let auth = if reg.token_env.is_some() {
+            color::dim(" (token_env)")
+        } else if reg.url.contains("gitlab.com") || reg.url.contains("github.com") {
+            color::dim(" (cli auth)")
+        } else {
+            String::new()
+        };
 
         if repo_dir.exists() {
             let skills = registry::list_skills(&repo_dir, reg).unwrap_or_default();
-            eprintln!("  registry {}{ro}{src}: {} skills {}",
+            eprintln!("  registry {}{ro}{src}{auth}: {} skills {}",
                 color::cyan(&reg.name), skills.len(), color::green("ok"));
         } else {
-            eprintln!("  registry {}{ro}{src}: {}",
+            eprintln!("  registry {}{ro}{src}{auth}: {}",
                 color::cyan(&reg.name), color::dim("not cached"));
         }
     }
