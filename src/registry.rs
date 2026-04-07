@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use fs2::FileExt;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -49,10 +50,57 @@ pub fn is_offline() -> bool {
     OFFLINE.load(std::sync::atomic::Ordering::Relaxed)
 }
 
+/// Global dry-run flag. Set by --dry-run CLI flag.
+static DRY_RUN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn set_dry_run(dry_run: bool) {
+    DRY_RUN.store(dry_run, std::sync::atomic::Ordering::Relaxed);
+}
+
+pub fn is_dry_run() -> bool {
+    DRY_RUN.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+// ── File locking ────────────────────────────────────────────────────
+
+/// RAII guard that holds a file lock and releases it on drop.
+struct LockGuard(std::fs::File);
+
+impl Drop for LockGuard {
+    fn drop(&mut self) {
+        let _ = self.0.unlock();
+    }
+}
+
+/// Acquire an exclusive file lock on a registry's cache directory.
+/// Returns a guard that releases the lock on drop.
+fn lock_registry(reg: &Registry) -> Result<LockGuard> {
+    let cache_dir = Config::cache_dir()?;
+    std::fs::create_dir_all(&cache_dir)?;
+    let lock_path = cache_dir.join(format!(".{}.lock", reg.name));
+    let lock_file = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(&lock_path)
+        .with_context(|| format!("Failed to create lock file for {}", reg.name))?;
+
+    lock_file
+        .try_lock_exclusive()
+        .or_else(|_| {
+            eprintln!("  waiting for lock on {}...", reg.name);
+            lock_file.lock_exclusive()
+        })
+        .with_context(|| format!("Failed to lock registry {}", reg.name))?;
+
+    Ok(LockGuard(lock_file))
+}
+
 // ── Ensure registry ─────────────────────────────────────────────────
 
 /// Ensure a registry is cloned/downloaded and up to date. Returns the local path.
 /// Pulls at most once per invocation. Respects --offline flag.
+/// Uses file locking to prevent concurrent corruption.
 pub fn ensure_registry(reg: &Registry) -> Result<PathBuf> {
     let cache_dir = Config::cache_dir()?;
     let repo_dir = cache_dir.join(&reg.name);
@@ -70,6 +118,9 @@ pub fn ensure_registry(reg: &Registry) -> Result<PathBuf> {
     if already_pulled(&reg.name) {
         return Ok(repo_dir);
     }
+
+    // Acquire lock before any git/download operations
+    let _lock = lock_registry(reg)?;
 
     if reg.source == "archive" {
         ensure_archive_registry(reg, &repo_dir)?;
@@ -90,32 +141,112 @@ pub fn ensure_registry(reg: &Registry) -> Result<PathBuf> {
 }
 
 /// Download and extract an archive registry (GitHub/GitLab tarball).
+/// Uses etag caching to skip redundant downloads.
 fn ensure_archive_registry(reg: &Registry, dest: &Path) -> Result<()> {
     let archive_url = resolve_archive_url(&reg.url, &reg.branch)?;
 
     let cache_dir = dest.parent().context("Invalid cache path")?;
     std::fs::create_dir_all(cache_dir)?;
 
-    // Download tarball to temp file
+    let etag_path = cache_dir.join(format!(".{}.etag", reg.name));
+
+    // Try conditional download with etag
     let tmp_tar = cache_dir.join(format!(".{}-archive.tar.gz", reg.name));
-    let status = std::process::Command::new("curl")
-        .args([
-            "-fsSL", "--proto", "=https", "--max-redirs", "5",
-            "--max-time", "60", "-o",
-        ])
-        .arg(&tmp_tar)
-        .arg(&archive_url)
-        .status()
+    let mut curl_args = vec![
+        "-fsSL",
+        "--proto",
+        "=https",
+        "--max-redirs",
+        "5",
+        "--max-time",
+        "60",
+    ];
+
+    // If we have a cached etag and the dest exists, use conditional request
+    let old_etag = if dest.exists() {
+        std::fs::read_to_string(&etag_path).ok()
+    } else {
+        None
+    };
+
+    let header_path = cache_dir.join(format!(".{}-headers.txt", reg.name));
+
+    // Always dump response headers to capture etag
+    let header_path_str = header_path.to_string_lossy().to_string();
+    curl_args.extend_from_slice(&["-D", &header_path_str]);
+
+    let if_none_match;
+    if let Some(ref etag) = old_etag {
+        let etag = etag.trim();
+        if !etag.is_empty() {
+            if_none_match = format!("If-None-Match: {etag}");
+            curl_args.push("-H");
+            curl_args.push(&if_none_match);
+        }
+    }
+
+    curl_args.extend_from_slice(&["-o"]);
+    let tmp_tar_str = tmp_tar.to_string_lossy().to_string();
+    curl_args.push(&tmp_tar_str);
+    curl_args.push(&archive_url);
+
+    let output = std::process::Command::new("curl")
+        .args(&curl_args)
+        .output()
         .context("Failed to run curl")?;
 
-    if !status.success() {
-        // Clean up temp file on failure
+    // Check for 304 Not Modified
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        // curl exit code 22 = HTTP error (includes 304 with -f)
+        // Check headers for 304
+        if let Ok(headers) = std::fs::read_to_string(&header_path)
+            && (headers.contains("304") || headers.contains("Not Modified"))
+        {
+            let _ = std::fs::remove_file(&tmp_tar);
+            let _ = std::fs::remove_file(&header_path);
+            return Ok(());
+        }
         let _ = std::fs::remove_file(&tmp_tar);
+        let _ = std::fs::remove_file(&header_path);
+
+        // If we have a cached version, warn and continue
+        if dest.exists() {
+            eprintln!("  warning: failed to refresh archive for {}: {}", reg.name, stderr.trim());
+            eprintln!("  using cached version");
+            return Ok(());
+        }
         anyhow::bail!("Failed to download archive for {}", reg.name);
     }
 
+    // Parse etag from response headers
+    if let Ok(headers) = std::fs::read_to_string(&header_path) {
+        for line in headers.lines() {
+            let lower = line.to_lowercase();
+            if lower.starts_with("etag:") {
+                let etag = line[5..].trim();
+                let _ = std::fs::write(&etag_path, etag);
+                break;
+            }
+        }
+    }
+    let _ = std::fs::remove_file(&header_path);
+
+    // Check if downloaded content matches what we have (content hash)
+    if dest.exists()
+        && let (Ok(new_bytes), Some(old_hash)) = (std::fs::read(&tmp_tar), archive_content_hash(dest))
+    {
+        use sha2::{Digest, Sha256};
+        let mut hasher = Sha256::new();
+        hasher.update(&new_bytes);
+        let new_hash = hex::encode(hasher.finalize());
+        if new_hash == old_hash {
+            let _ = std::fs::remove_file(&tmp_tar);
+            return Ok(());
+        }
+    }
+
     // Extract -- GitHub/GitLab archives have a top-level directory
-    // we need to strip (--strip-components=1)
     let tmp_extract = cache_dir.join(format!(".{}-extract", reg.name));
     let _ = std::fs::remove_dir_all(&tmp_extract);
     std::fs::create_dir_all(&tmp_extract)?;
@@ -142,6 +273,22 @@ fn ensure_archive_registry(reg: &Registry, dest: &Path) -> Result<()> {
     std::fs::rename(&tmp_extract, dest)?;
 
     Ok(())
+}
+
+/// Hash the content of an archive cache directory for change detection.
+fn archive_content_hash(dir: &Path) -> Option<String> {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    let mut files = collect_files(dir);
+    files.sort();
+    for file in &files {
+        let relative = file.strip_prefix(dir).unwrap_or(file);
+        hasher.update(relative.to_string_lossy().as_bytes());
+        if let Ok(content) = std::fs::read(file) {
+            hasher.update(&content);
+        }
+    }
+    Some(hex::encode(hasher.finalize()))
 }
 
 /// Resolve a git URL to an archive download URL.
@@ -234,7 +381,7 @@ pub fn skill_commit(repo_dir: &Path, skill_path_relative: &str) -> Option<String
 }
 
 /// Commit and push changes to a registry via git CLI.
-pub fn commit_and_push(repo_dir: &Path, skill_name: &str, branch: &str) -> Result<()> {
+pub fn commit_and_push(repo_dir: &Path, skill_name: &str, branch: &str, message: Option<&str>) -> Result<()> {
     git_command(&["add", "-A", "--", skill_name], Some(repo_dir))?;
 
     // Check if there are staged changes
@@ -248,8 +395,11 @@ pub fn commit_and_push(repo_dir: &Path, skill_name: &str, branch: &str) -> Resul
         anyhow::bail!("No changes to push for {skill_name}");
     }
 
+    let default_msg = format!("update {skill_name}\n\nPushed by rune");
+    let msg = message.unwrap_or(&default_msg);
+
     git_command(
-        &["commit", "--quiet", "-m", &format!("update {skill_name}\n\nPushed by rune")],
+        &["commit", "--quiet", "-m", msg],
         Some(repo_dir),
     )?;
     git_command(

@@ -52,14 +52,19 @@ fn setup_hook() -> Result<()> {
     let settings_path = home.join(".claude").join("settings.json");
 
     let mut settings: serde_json::Value = if settings_path.exists() {
-        let content = std::fs::read_to_string(&settings_path)?;
-        serde_json::from_str(&content)?
+        let content = std::fs::read_to_string(&settings_path)
+            .with_context(|| format!("Failed to read {}", settings_path.display()))?;
+        serde_json::from_str(&content)
+            .with_context(|| format!(
+                "Failed to parse {}. Fix the JSON manually or delete the file and re-run setup.",
+                settings_path.display()
+            ))?
     } else {
+        std::fs::create_dir_all(settings_path.parent().unwrap())?;
         serde_json::json!({})
     };
 
     // Check if hook already installed
-    let hook_command = hook_path.to_string_lossy().to_string();
     if let Some(hooks) = settings.get("hooks")
         && let Some(post) = hooks.get("PostToolUse")
     {
@@ -82,7 +87,15 @@ fn setup_hook() -> Result<()> {
         }
     }
 
+    // Backup existing settings before modifying
+    if settings_path.exists() {
+        let backup = settings_path.with_extension("json.bak");
+        std::fs::copy(&settings_path, &backup)
+            .with_context(|| "Failed to backup settings.json")?;
+    }
+
     // Build the hook entry
+    let hook_command = hook_path.to_string_lossy().to_string();
     let hook_entry = serde_json::json!({
         "matcher": "Edit|Write",
         "hooks": [{
@@ -95,24 +108,25 @@ fn setup_hook() -> Result<()> {
     // Insert into settings
     let hooks = settings
         .as_object_mut()
-        .context("settings.json is not an object")?
+        .context("settings.json root is not a JSON object")?
         .entry("hooks")
         .or_insert_with(|| serde_json::json!({}));
 
     let post_tool_use = hooks
         .as_object_mut()
-        .context("hooks is not an object")?
+        .context("settings.json hooks field is not a JSON object")?
         .entry("PostToolUse")
         .or_insert_with(|| serde_json::json!([]));
 
     post_tool_use
         .as_array_mut()
-        .context("PostToolUse is not an array")?
+        .context("settings.json PostToolUse field is not a JSON array")?
         .push(hook_entry);
 
-    // Write back
+    // Write back (with trailing newline for POSIX compliance)
     let content = serde_json::to_string_pretty(&settings)?;
-    std::fs::write(&settings_path, content)?;
+    std::fs::write(&settings_path, format!("{content}\n"))
+        .with_context(|| format!("Failed to write {}", settings_path.display()))?;
     eprintln!("Installed hook in {}", settings_path.display());
 
     Ok(())

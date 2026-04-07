@@ -1,7 +1,9 @@
 use anyhow::{Context, Result};
 use std::path::Path;
 
+use crate::color;
 use crate::config::Config;
+use crate::lockfile::{Lockfile, LockedSkill};
 use crate::manifest::{Manifest, SkillEntry};
 use crate::pedigree::{self, Pedigree};
 use crate::registry;
@@ -22,6 +24,26 @@ pub enum DriftDirection {
     LocalNewer,
     RegistryNewer,
     Diverged,
+}
+
+impl SkillStatus {
+    /// Colored string representation.
+    pub fn colored(&self) -> String {
+        match self {
+            Self::Current => color::green("CURRENT"),
+            Self::Drifted { direction } => {
+                let dir = match direction {
+                    DriftDirection::LocalNewer => "local is newer",
+                    DriftDirection::RegistryNewer => "registry is newer",
+                    DriftDirection::Diverged => "diverged",
+                };
+                color::yellow(&format!("DRIFTED  {dir}"))
+            }
+            Self::Missing => color::red("MISSING"),
+            Self::Unregistered => color::yellow("UNREGISTERED"),
+            Self::RegistryMissing => color::red("REGISTRY MISSING"),
+        }
+    }
 }
 
 impl std::fmt::Display for SkillStatus {
@@ -67,11 +89,13 @@ fn resolve_registry<'a>(
 }
 
 /// Check a single skill against its registry.
+/// Uses lockfile for accurate drift direction instead of unreliable mtime.
 fn check_skill(
     skill_name: &str,
     entry: &SkillEntry,
     config: &Config,
     project_dir: &Path,
+    lockfile: &Lockfile,
 ) -> Result<(String, String, SkillStatus)> {
     let reg = resolve_registry(skill_name, entry, config)?;
     let repo_dir = registry::ensure_registry(reg)?;
@@ -93,17 +117,17 @@ fn check_skill(
             if local_hash == reg_hash {
                 SkillStatus::Current
             } else {
-                let local_mtime = std::fs::metadata(&local_path)
-                    .and_then(|m| m.modified())
-                    .ok();
-                let reg_mtime = std::fs::metadata(&reg_path)
-                    .and_then(|m| m.modified())
-                    .ok();
-
-                let direction = match (local_mtime, reg_mtime) {
-                    (Some(l), Some(r)) if l > r => DriftDirection::LocalNewer,
-                    (Some(l), Some(r)) if r > l => DriftDirection::RegistryNewer,
-                    _ => DriftDirection::Diverged,
+                // Use lockfile for drift direction
+                let direction = if let Some(locked) = lockfile.skills.get(skill_name) {
+                    let local_changed = local_hash.as_deref() != Some(locked.hash.as_str());
+                    let reg_changed = reg_hash.as_deref() != Some(locked.hash.as_str());
+                    match (local_changed, reg_changed) {
+                        (true, false) => DriftDirection::LocalNewer,
+                        (false, true) => DriftDirection::RegistryNewer,
+                        _ => DriftDirection::Diverged,
+                    }
+                } else {
+                    DriftDirection::Diverged
                 };
                 SkillStatus::Drifted { direction }
             }
@@ -117,6 +141,7 @@ fn check_skill(
 pub fn check(project_dir: &Path, file_filter: Option<&str>) -> Result<Vec<(String, String, SkillStatus)>> {
     let config = Config::load()?;
     let manifest = Manifest::load(project_dir)?;
+    let lockfile = Lockfile::load(project_dir).unwrap_or_default();
 
     let mut results = Vec::new();
 
@@ -135,7 +160,7 @@ pub fn check(project_dir: &Path, file_filter: Option<&str>) -> Result<Vec<(Strin
             }
         }
 
-        match check_skill(skill_name, entry, &config, project_dir) {
+        match check_skill(skill_name, entry, &config, project_dir, &lockfile) {
             Ok(result) => results.push(result),
             Err(e) => eprintln!("  {skill_name}: error: {e}"),
         }
@@ -145,11 +170,18 @@ pub fn check(project_dir: &Path, file_filter: Option<&str>) -> Result<Vec<(Strin
 }
 
 /// Sync all skills from registries to the project.
-pub fn sync(project_dir: &Path) -> Result<u32> {
+/// Writes a lockfile recording exactly what was installed.
+/// Detects locally modified imported skills and updates pedigree.
+pub fn sync(project_dir: &Path, force: bool) -> Result<u32> {
     let config = Config::load()?;
     let manifest = Manifest::load(project_dir)?;
+    let mut lockfile = Lockfile::load(project_dir).unwrap_or_default();
     let skills_dir = Manifest::skills_dir(project_dir);
-    std::fs::create_dir_all(&skills_dir)?;
+    let dry_run = registry::is_dry_run();
+
+    if !dry_run {
+        std::fs::create_dir_all(&skills_dir)?;
+    }
 
     let mut count = 0;
 
@@ -170,7 +202,8 @@ pub fn sync(project_dir: &Path) -> Result<u32> {
         let reg_path = registry::skill_path(&repo_dir, reg, skill_name);
 
         if !reg_path.exists() {
-            eprintln!("  {skill_name}: not found in registry {}", reg.name);
+            eprintln!("  {}: not found in registry {}",
+                skill_name, color::cyan(&reg.name));
             continue;
         }
 
@@ -188,17 +221,73 @@ pub fn sync(project_dir: &Path) -> Result<u32> {
             None
         };
 
+        // Detect local modifications via lockfile
+        let locally_modified = if let Some(locked) = lockfile.skills.get(skill_name) {
+            local_hash.as_deref() != Some(locked.hash.as_str()) && local_path.exists()
+        } else {
+            false
+        };
+
         if reg_hash != local_hash {
-            if is_dir && local_path.exists() {
-                std::fs::remove_dir_all(&local_path)?;
+            if locally_modified && !force {
+                // Local was changed since last sync -- don't overwrite
+                eprintln!("  {}: {} (run `rune sync --force` or `rune push {}` first)",
+                    skill_name,
+                    color::yellow("skipped -- locally modified"),
+                    skill_name);
+
+                // Mark pedigree as modified for imported skills
+                if !dry_run {
+                    let ped = Pedigree::from_skill(&local_path).unwrap_or_default();
+                    if ped.has_origin() && ped.modified != Some(true) {
+                        let updated_ped = Pedigree {
+                            modified: Some(true),
+                            ..ped
+                        };
+                        let _ = updated_ped.write_to_skill(&local_path);
+                    }
+                }
+                continue;
             }
-            registry::copy_skill(&reg_path, &local_path)
-                .with_context(|| format!("Failed to sync {skill_name}"))?;
-            eprintln!("  {skill_name}: synced from {}", reg.name);
+
+            if dry_run {
+                eprintln!("  {}: {} from {}",
+                    skill_name,
+                    color::yellow("would sync"),
+                    color::cyan(&reg.name));
+            } else {
+                if is_dir && local_path.exists() {
+                    std::fs::remove_dir_all(&local_path)?;
+                }
+                registry::copy_skill(&reg_path, &local_path)
+                    .with_context(|| format!("Failed to sync {skill_name}"))?;
+                eprintln!("  {}: synced from {}",
+                    skill_name, color::cyan(&reg.name));
+            }
             count += 1;
         } else {
-            eprintln!("  {skill_name}: current");
+            eprintln!("  {}: {}", skill_name, color::green("current"));
         }
+
+        // Record in lockfile (even for current skills, to keep lockfile complete)
+        if !dry_run {
+            let hash = registry::skill_hash(&local_path)
+                .unwrap_or_default();
+            let skill_rel = registry::skill_path_relative(reg, skill_name);
+            let registry_commit = registry::skill_commit(&repo_dir, &skill_rel);
+            lockfile.skills.insert(skill_name.to_string(), LockedSkill {
+                registry: reg.name.clone(),
+                hash,
+                registry_commit,
+                synced_at: pedigree::today(),
+            });
+        }
+    }
+
+    // Remove lockfile entries for skills no longer in manifest
+    if !dry_run {
+        lockfile.skills.retain(|name, _| manifest.skills.contains_key(name));
+        lockfile.save(project_dir)?;
     }
 
     Ok(count)
@@ -255,13 +344,27 @@ pub fn add(project_dir: &Path, skill_name: &str, registry_name: Option<&str>) ->
     };
 
     registry::copy_skill(&reg_path, &local_path)?;
+
+    // Update lockfile
+    let mut lockfile = Lockfile::load(project_dir).unwrap_or_default();
+    let hash = registry::skill_hash(&local_path).unwrap_or_default();
+    let skill_rel = registry::skill_path_relative(reg, skill_name);
+    let registry_commit = registry::skill_commit(&repo_dir, &skill_rel);
+    lockfile.skills.insert(skill_name.to_string(), LockedSkill {
+        registry: reg.name.clone(),
+        hash,
+        registry_commit,
+        synced_at: pedigree::today(),
+    });
+    lockfile.save(project_dir)?;
+
     let kind = if is_dir { "dir" } else { "file" };
     eprintln!("Added {skill_name} from {} ({kind})", reg.name);
     Ok(())
 }
 
 /// Push a local skill change back to its registry. All git operations via CLI.
-pub fn push(project_dir: &Path, skill_name: &str) -> Result<()> {
+pub fn push(project_dir: &Path, skill_name: &str, message: Option<&str>) -> Result<()> {
     registry::validate_skill_name(skill_name)?;
     let config = Config::load()?;
     let manifest = Manifest::load(project_dir)?;
@@ -292,6 +395,14 @@ pub fn push(project_dir: &Path, skill_name: &str) -> Result<()> {
         anyhow::bail!("{skill_name} not found locally");
     };
 
+    if registry::is_dry_run() {
+        eprintln!("  {}: {} to {}",
+            skill_name,
+            color::yellow("would push"),
+            color::cyan(&reg.name));
+        return Ok(());
+    }
+
     // Copy local -> registry
     if reg_path.exists() && reg_path.is_dir() {
         std::fs::remove_dir_all(&reg_path)?;
@@ -299,9 +410,9 @@ pub fn push(project_dir: &Path, skill_name: &str) -> Result<()> {
     registry::copy_skill(local_path, &reg_path)?;
 
     // Commit and push via git CLI
-    registry::commit_and_push(&repo_dir, skill_name, &reg.branch)?;
+    registry::commit_and_push(&repo_dir, skill_name, &reg.branch, message)?;
 
-    eprintln!("Pushed {skill_name} to {}", reg.name);
+    eprintln!("Pushed {} to {}", skill_name, color::cyan(&reg.name));
     Ok(())
 }
 
@@ -330,6 +441,12 @@ pub fn remove(project_dir: &Path, skill_name: &str) -> Result<()> {
         eprintln!("Removed {skill_name} from manifest (no local files found)");
     }
 
+    // Clean lockfile entry
+    let mut lockfile = Lockfile::load(project_dir).unwrap_or_default();
+    if lockfile.skills.remove(skill_name).is_some() {
+        lockfile.save(project_dir)?;
+    }
+
     Ok(())
 }
 
@@ -337,6 +454,7 @@ pub fn remove(project_dir: &Path, skill_name: &str) -> Result<()> {
 pub fn ls(project_dir: &Path) -> Result<()> {
     let config = Config::load()?;
     let manifest = Manifest::load(project_dir)?;
+    let lockfile = Lockfile::load(project_dir).unwrap_or_default();
 
     if manifest.skills.is_empty() {
         eprintln!("No skills in manifest. Run `rune add <skill>`.");
@@ -348,12 +466,13 @@ pub fn ls(project_dir: &Path) -> Result<()> {
             eprintln!("  {skill_name}: {e}");
             continue;
         }
-        match check_skill(skill_name, entry, &config, project_dir) {
+        match check_skill(skill_name, entry, &config, project_dir, &lockfile) {
             Ok((name, reg, status)) => {
-                println!("  {name:<24} {status:<30} registry: {reg}");
+                println!("  {name:<24} {:<30} registry: {}",
+                    status.colored(), color::cyan(&reg));
             }
             Err(e) => {
-                println!("  {skill_name:<24} ERROR: {e}");
+                println!("  {skill_name:<24} {}", color::red(&format!("ERROR: {e}")));
             }
         }
     }
@@ -383,8 +502,8 @@ pub fn browse(registry_name: &str) -> Result<()> {
         return Ok(());
     }
 
-    let ro = if reg.readonly { " (read-only)" } else { "" };
-    eprintln!("{registry_name}{ro}: {} skills\n", skills.len());
+    let ro = if reg.readonly { color::dim(" (read-only)") } else { String::new() };
+    eprintln!("{}{ro}: {} skills\n", color::cyan(registry_name), skills.len());
 
     for skill in &skills {
         let path = registry::skill_path(&repo_dir, reg, skill);
@@ -392,14 +511,13 @@ pub fn browse(registry_name: &str) -> Result<()> {
         let desc = pedigree
             .description
             .unwrap_or_else(|| "-".to_string());
-        // Truncate description for display (safe for multi-byte UTF-8)
         let desc_short = if desc.chars().count() > 70 {
             let truncated: String = desc.chars().take(67).collect();
             format!("{truncated}...")
         } else {
             desc
         };
-        println!("  {skill:<24} {desc_short}");
+        println!("  {skill:<24} {}", color::dim(&desc_short));
     }
 
     Ok(())
@@ -576,11 +694,16 @@ pub fn upstream(quiet: bool) -> Result<()> {
         return Ok(());
     }
 
-    eprintln!("rune: {} upstream update(s) available\n", updates.len());
+    eprintln!("{}\n",
+        color::yellow(&format!("rune: {} upstream update(s) available", updates.len())));
     eprintln!("  {:<20} {:<30} {:<10} {:<10} STATUS", "SKILL", "ORIGIN", "LOCAL", "UPSTREAM");
 
     for (name, origin, local, upstream, modified) in &updates {
-        let status = if *modified { "MODIFIED" } else { "UPDATED" };
+        let status = if *modified {
+            color::red("MODIFIED")
+        } else {
+            color::yellow("UPDATED")
+        };
         eprintln!("  {name:<20} {origin:<30} {local:<10} {upstream:<10} {status}");
     }
 
@@ -729,6 +852,14 @@ pub fn update(skill_name: &str, force: bool) -> Result<()> {
     let upstream_commit = registry::skill_commit(&source_dir, &skill_rel)
         .unwrap_or_else(|| "unknown".to_string());
 
+    if registry::is_dry_run() {
+        eprintln!("  {}: {} from {} (commit {upstream_commit})",
+            skill_name,
+            color::yellow("would update"),
+            color::cyan(&source_reg.name));
+        return Ok(());
+    }
+
     // Remove old and copy new
     if skill_path.exists() && skill_path.is_dir() {
         std::fs::remove_dir_all(&skill_path)?;
@@ -747,8 +878,8 @@ pub fn update(skill_name: &str, force: bool) -> Result<()> {
     new_ped.write_to_skill(&skill_path)?;
 
     eprintln!(
-        "  updated {skill_name} from {} (commit {upstream_commit})",
-        source_reg.name
+        "  updated {} from {} (commit {upstream_commit})",
+        skill_name, color::cyan(&source_reg.name)
     );
     eprintln!("  push: rune push {skill_name}");
 
@@ -784,14 +915,14 @@ pub fn ls_registry(registry_name: &str) -> Result<()> {
     let skills = registry::list_skills(&repo_dir, reg)?;
 
     if skills.is_empty() {
-        eprintln!("No skills in registry {registry_name}");
+        eprintln!("No skills in registry {}", color::cyan(registry_name));
     } else {
-        let ro = if reg.readonly { " (read-only)" } else { "" };
-        eprintln!("{registry_name}{ro}:");
+        let ro = if reg.readonly { color::dim(" (read-only)") } else { String::new() };
+        eprintln!("{}{ro}:", color::cyan(registry_name));
         for skill in &skills {
             let path = registry::skill_path(&repo_dir, reg, skill);
             let kind = if path.is_dir() { "dir " } else { "file" };
-            println!("  {skill:<24} {kind}");
+            println!("  {skill:<24} {}", color::dim(kind));
         }
     }
 
@@ -799,15 +930,15 @@ pub fn ls_registry(registry_name: &str) -> Result<()> {
 }
 
 /// Diagnose configuration and registry health.
-pub fn doctor() -> Result<()> {
-    eprintln!("rune doctor\n");
+pub fn doctor(project_dir: &Path) -> Result<()> {
+    eprintln!("{}\n", color::bold("rune doctor"));
 
     // Config
     let config_path = Config::path()?;
     if config_path.exists() {
-        eprintln!("  config: {} ✓", config_path.display());
+        eprintln!("  config: {} {}", config_path.display(), color::green("ok"));
     } else {
-        eprintln!("  config: {} MISSING", config_path.display());
+        eprintln!("  config: {} {}", config_path.display(), color::red("MISSING"));
         eprintln!("  run: rune setup");
         return Ok(());
     }
@@ -818,45 +949,246 @@ pub fn doctor() -> Result<()> {
     let mut names = std::collections::HashSet::new();
     for reg in &config.registry {
         if !names.insert(&reg.name) {
-            eprintln!("  registry {}: DUPLICATE NAME", reg.name);
+            eprintln!("  registry {}: {}", color::cyan(&reg.name), color::red("DUPLICATE NAME"));
             continue;
         }
         if reg.url.is_empty() {
-            eprintln!("  registry {}: EMPTY URL", reg.name);
+            eprintln!("  registry {}: {}", color::cyan(&reg.name), color::red("EMPTY URL"));
             continue;
         }
 
         let cache_dir = Config::cache_dir()?;
         let repo_dir = cache_dir.join(&reg.name);
-        let ro = if reg.readonly { " (readonly)" } else { "" };
+        let ro = if reg.readonly { color::dim(" (readonly)") } else { String::new() };
+        let src = color::dim(&format!(" [{}]", reg.source));
 
         if repo_dir.exists() {
             let skills = registry::list_skills(&repo_dir, reg).unwrap_or_default();
-            eprintln!("  registry {}{ro}: {} skills ✓", reg.name, skills.len());
+            eprintln!("  registry {}{ro}{src}: {} skills {}",
+                color::cyan(&reg.name), skills.len(), color::green("ok"));
         } else {
-            eprintln!(
-                "  registry {}{ro}: not cached (will clone on first use)",
-                reg.name
-            );
+            eprintln!("  registry {}{ro}{src}: {}",
+                color::cyan(&reg.name), color::dim("not cached"));
         }
     }
 
     // Hook
     let hook_path = Config::config_dir()?.join("hook.sh");
     if hook_path.exists() {
-        eprintln!("  hook: {} ✓", hook_path.display());
+        eprintln!("  hook: {} {}", hook_path.display(), color::green("ok"));
     } else {
-        eprintln!("  hook: not installed");
+        eprintln!("  hook: {}", color::yellow("not installed"));
         eprintln!("  run: rune setup");
     }
 
-    // Offline
+    // Mode
     if registry::is_offline() {
-        eprintln!("  mode: offline");
+        eprintln!("  mode: {}", color::yellow("offline"));
     } else {
         eprintln!("  mode: online");
     }
+    if registry::is_dry_run() {
+        eprintln!("  mode: {}", color::yellow("dry-run"));
+    }
+
+    // Lockfile
+    let lockfile_path = Lockfile::path(project_dir);
+    if lockfile_path.exists() {
+        let lf = Lockfile::load(project_dir).unwrap_or_default();
+        eprintln!("  lockfile: {} skills locked {}", lf.skills.len(), color::green("ok"));
+    } else {
+        eprintln!("  lockfile: {}", color::dim("none (run rune sync to create)"));
+    }
 
     eprintln!();
+    Ok(())
+}
+
+/// Remove stale registry caches that don't match any configured registry.
+pub fn clean() -> Result<()> {
+    let config = Config::load()?;
+    let cache_dir = Config::cache_dir()?;
+    let dry_run = registry::is_dry_run();
+
+    if !cache_dir.exists() {
+        eprintln!("Cache directory does not exist. Nothing to clean.");
+        return Ok(());
+    }
+
+    let configured: std::collections::HashSet<String> = config
+        .registry
+        .iter()
+        .map(|r| r.name.clone())
+        .collect();
+
+    let mut removed = 0;
+    for entry in std::fs::read_dir(&cache_dir)? {
+        let entry = entry?;
+        let name = entry.file_name().to_string_lossy().to_string();
+
+        // Skip lock/etag/header files -- they'll be cleaned with their registry
+        if name.starts_with('.') {
+            // Check if it's a stale metadata file for a removed registry
+            let base = name.trim_start_matches('.')
+                .trim_end_matches(".lock")
+                .trim_end_matches(".etag")
+                .trim_end_matches("-headers.txt")
+                .trim_end_matches("-archive.tar.gz")
+                .trim_end_matches("-extract");
+            if !configured.contains(base) {
+                if dry_run {
+                    eprintln!("  {} {}", color::yellow("would remove"), name);
+                } else {
+                    let path = entry.path();
+                    if path.is_dir() {
+                        std::fs::remove_dir_all(&path)?;
+                    } else {
+                        std::fs::remove_file(&path)?;
+                    }
+                    eprintln!("  {} {}", color::red("removed"), name);
+                }
+                removed += 1;
+            }
+            continue;
+        }
+
+        if !configured.contains(&name) {
+            if dry_run {
+                eprintln!("  {} {} (not in config)", color::yellow("would remove"), name);
+            } else {
+                let path = entry.path();
+                if path.is_dir() {
+                    std::fs::remove_dir_all(&path)?;
+                } else {
+                    std::fs::remove_file(&path)?;
+                }
+                eprintln!("  {} {} (not in config)", color::red("removed"), name);
+            }
+            removed += 1;
+        }
+    }
+
+    if removed == 0 {
+        eprintln!("Cache is clean. Nothing to remove.");
+    } else if dry_run {
+        eprintln!("\n{} item(s) would be removed. Run without --dry-run to delete.", removed);
+    } else {
+        eprintln!("\nRemoved {} stale cache item(s).", removed);
+    }
+
+    Ok(())
+}
+
+/// Combined status view: registries + project skills + upstream updates.
+pub fn status(project_dir: &Path) -> Result<()> {
+    let config = Config::load()?;
+
+    // Registries
+    eprintln!("{}", color::bold("registries"));
+    for reg in &config.registry {
+        let cache_dir = Config::cache_dir()?;
+        let repo_dir = cache_dir.join(&reg.name);
+        let ro = if reg.readonly { color::dim(" (ro)") } else { String::new() };
+        let src = color::dim(&format!(" [{}]", reg.source));
+
+        if repo_dir.exists() {
+            let skills = registry::list_skills(&repo_dir, reg).unwrap_or_default();
+            eprintln!("  {}{ro}{src}: {} skills",
+                color::cyan(&reg.name), skills.len());
+        } else {
+            eprintln!("  {}{ro}{src}: {}",
+                color::cyan(&reg.name), color::dim("not cached"));
+        }
+    }
+
+    // Project skills
+    let manifest = match Manifest::try_load(project_dir) {
+        Some(m) => m,
+        None => {
+            eprintln!("\n{}", color::dim("No rune.toml in this project."));
+            return Ok(());
+        }
+    };
+
+    let lockfile = Lockfile::load(project_dir).unwrap_or_default();
+    let mut current = 0u32;
+    let mut drifted = 0u32;
+    let mut missing = 0u32;
+
+    eprintln!("\n{} ({} skills)", color::bold("project"), manifest.skills.len());
+    for (skill_name, entry) in &manifest.skills {
+        if let Err(e) = registry::validate_skill_name(skill_name) {
+            eprintln!("  {skill_name}: {e}");
+            continue;
+        }
+        match check_skill(skill_name, entry, &config, project_dir, &lockfile) {
+            Ok((name, reg, status)) => {
+                match &status {
+                    SkillStatus::Current => current += 1,
+                    SkillStatus::Drifted { .. } => drifted += 1,
+                    _ => missing += 1,
+                }
+                println!("  {name:<24} {:<30} {}", status.colored(), color::dim(&reg));
+            }
+            Err(e) => {
+                missing += 1;
+                println!("  {skill_name:<24} {}", color::red(&format!("ERROR: {e}")));
+            }
+        }
+    }
+
+    let summary = format!("{} current, {} drifted, {} missing",
+        current, drifted, missing);
+    eprintln!("  {}", if drifted > 0 || missing > 0 {
+        color::yellow(&summary)
+    } else {
+        color::green(&summary)
+    });
+
+    // Upstream updates (scan writable registries for imported skills)
+    let mut updates = Vec::new();
+    for reg in &config.registry {
+        if reg.readonly {
+            continue;
+        }
+        let repo_dir = match registry::ensure_registry(reg) {
+            Ok(d) => d,
+            Err(_) => continue,
+        };
+        let skills = registry::list_skills(&repo_dir, reg).unwrap_or_default();
+        for skill_name in &skills {
+            let skill_path = registry::skill_path(&repo_dir, reg, skill_name);
+            let ped = Pedigree::from_skill(&skill_path).unwrap_or_default();
+            if !ped.has_origin() {
+                continue;
+            }
+            let imported_commit = ped.upstream_commit.as_deref().unwrap_or("unknown");
+            let origin = ped.origin.as_deref().unwrap_or("unknown");
+            let source_reg = config.registry.iter().find(|r| {
+                let slug = pedigree::url_to_slug(&r.url);
+                origin.contains(&slug) || origin == r.name
+            });
+            if let Some(source_reg) = source_reg
+                && let Ok(source_dir) = registry::ensure_registry(source_reg)
+            {
+                let skill_rel = registry::skill_path_relative(source_reg, skill_name);
+                let upstream_commit = registry::skill_commit(&source_dir, &skill_rel)
+                    .unwrap_or_else(|| "unknown".to_string());
+                if upstream_commit != imported_commit {
+                    updates.push((skill_name.clone(), origin.to_string()));
+                }
+            }
+        }
+    }
+
+    if !updates.is_empty() {
+        eprintln!("\n{}", color::yellow(
+            &format!("{} upstream update(s) available", updates.len())));
+        for (name, origin) in &updates {
+            eprintln!("  {} from {}", name, color::dim(origin));
+        }
+        eprintln!("  run: rune upstream");
+    }
+
     Ok(())
 }
