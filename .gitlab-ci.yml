@@ -1,10 +1,10 @@
 include:
   - template: Jobs/Secret-Detection.gitlab-ci.yml
-  - component: gitlab.com/nomograph/pipeline/rust-cli@v1.0.0
+  - component: gitlab.com/nomograph/pipeline/rust-cli@v1.1.0
     inputs:
       binary_name: rune
       project_description: "Skill registry manager for AI coding agents."
-      audit_allow_failure: true
+      audit_allow_failure: false
 
 stages: [test, build, sign, publish, release]
 
