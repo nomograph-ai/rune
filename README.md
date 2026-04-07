@@ -2,8 +2,9 @@
 
 # rune
 
-![built with GitLab](https://img.shields.io/badge/built_with-GitLab-FC6D26?logo=gitlab)
+[![pipeline](https://gitlab.com/nomograph/rune/badges/main/pipeline.svg)](https://gitlab.com/nomograph/rune/-/pipelines)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+![built with GitLab](https://img.shields.io/badge/built_with-GitLab-FC6D26?logo=gitlab)
 
 Skill registry manager for AI coding agents. Syncs markdown skill files
 from git-based registries into `.claude/skills/`.
