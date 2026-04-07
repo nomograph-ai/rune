@@ -141,6 +141,9 @@ enum Commands {
     /// Combined status: registries, project skills, upstream updates
     Status,
 
+    /// Audit skill content: compare sizes against upstream, flag regressions
+    Audit,
+
     /// Remove stale registry caches not in config
     Clean,
 
@@ -214,6 +217,7 @@ fn main() -> Result<()> {
         Commands::Diff { skill } => commands::diff(&skill),
         Commands::Update { skill, force } => commands::update(&skill, force),
         Commands::Status => commands::status(&project_dir),
+        Commands::Audit => commands::audit(),
         Commands::Clean => commands::clean(),
         Commands::Doctor => commands::doctor(&project_dir),
         Commands::Completions { shell } => {
