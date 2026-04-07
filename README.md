@@ -39,11 +39,11 @@ Global registries in `~/.config/rune/config.toml`:
 ```toml
 [[registry]]
 name = "runes"
-url = "https://gitlab.com/dunn.dev/runes.git"
+url = "https://gitlab.com/nomograph/runes.git"
 
 [[registry]]
 name = "arcana"
-url = "https://gitlab.com/dunn.dev/arcana.git"
+url = "https://gitlab.com/nomograph/arcana.git"
 ```
 
 Per-project manifest in `.claude/rune.toml`:

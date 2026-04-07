@@ -342,8 +342,8 @@ mod tests {
     #[test]
     fn url_to_slug_gitlab() {
         assert_eq!(
-            url_to_slug("https://gitlab.com/dunn.dev/runes.git"),
-            "dunn.dev/runes"
+            url_to_slug("https://gitlab.com/nomograph/runes.git"),
+            "nomograph/runes"
         );
     }
 
@@ -366,8 +366,8 @@ mod tests {
     #[test]
     fn url_to_slug_ssh_gitlab() {
         assert_eq!(
-            url_to_slug("git@gitlab.com:dunn.dev/arcana.git"),
-            "dunn.dev/arcana"
+            url_to_slug("git@gitlab.com:nomograph/arcana.git"),
+            "nomograph/arcana"
         );
     }
 
