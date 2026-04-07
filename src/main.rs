@@ -1,5 +1,7 @@
+mod color;
 mod commands;
 mod config;
+mod lockfile;
 mod manifest;
 mod pedigree;
 mod registry;
@@ -26,6 +28,7 @@ use std::path::PathBuf;
         rune push tidy                # push local changes back to registry\n  \
         rune browse k-dense           # discover upstream skills\n  \
         rune import scanpy@k-dense    # import from upstream\n  \
+        rune status                   # combined summary view\n  \
         rune ls                       # list skills and their status"
 )]
 struct Cli {
@@ -39,6 +42,10 @@ struct Cli {
     /// Use cached registries without pulling (no network)
     #[arg(long, global = true)]
     offline: bool,
+
+    /// Show what would be done without making changes
+    #[arg(long, global = true)]
+    dry_run: bool,
 }
 
 #[derive(Subcommand)]
@@ -72,12 +79,19 @@ enum Commands {
     },
 
     /// Sync all skills from registries (pull updates)
-    Sync,
+    Sync {
+        /// Overwrite locally modified skills
+        #[arg(long)]
+        force: bool,
+    },
 
     /// Push a local skill change back to its registry
     Push {
         /// Skill name to push
         skill: String,
+        /// Custom commit message
+        #[arg(long, short)]
+        message: Option<String>,
     },
 
     /// List skills and their sync status, or browse a registry
@@ -124,6 +138,12 @@ enum Commands {
         force: bool,
     },
 
+    /// Combined status: registries, project skills, upstream updates
+    Status,
+
+    /// Remove stale registry caches not in config
+    Clean,
+
     /// Diagnose configuration and registry health
     Doctor,
 
@@ -137,8 +157,13 @@ enum Commands {
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
+    color::init();
+
     if cli.offline {
         registry::set_offline(true);
+    }
+    if cli.dry_run {
+        registry::set_dry_run(true);
     }
 
     let project_dir = cli.project.unwrap_or_else(|| {
@@ -153,7 +178,8 @@ fn main() -> Result<()> {
         Commands::Check { file } => {
             let results = commands::check(&project_dir, file.as_deref())?;
             for (name, reg, status) in &results {
-                println!("  {name:<24} {status:<30} registry: {reg}");
+                println!("  {name:<24} {:<30} registry: {}",
+                    status.colored(), color::cyan(reg));
             }
             if results
                 .iter()
@@ -163,12 +189,18 @@ fn main() -> Result<()> {
             }
             Ok(())
         }
-        Commands::Sync => {
-            let count = commands::sync(&project_dir)?;
-            eprintln!("Synced {count} skills.");
+        Commands::Sync { force } => {
+            let count = commands::sync(&project_dir, force)?;
+            if registry::is_dry_run() {
+                eprintln!("Would sync {count} skill(s). (dry run)");
+            } else {
+                eprintln!("Synced {count} skill(s).");
+            }
             Ok(())
         }
-        Commands::Push { skill } => commands::push(&project_dir, &skill),
+        Commands::Push { skill, message } => {
+            commands::push(&project_dir, &skill, message.as_deref())
+        }
         Commands::Ls { registry } => {
             if let Some(reg_name) = registry {
                 commands::ls_registry(&reg_name)
@@ -181,7 +213,9 @@ fn main() -> Result<()> {
         Commands::Upstream { quiet } => commands::upstream(quiet),
         Commands::Diff { skill } => commands::diff(&skill),
         Commands::Update { skill, force } => commands::update(&skill, force),
-        Commands::Doctor => commands::doctor(),
+        Commands::Status => commands::status(&project_dir),
+        Commands::Clean => commands::clean(),
+        Commands::Doctor => commands::doctor(&project_dir),
         Commands::Completions { shell } => {
             let shell = match shell.as_str() {
                 "zsh" => clap_complete::Shell::Zsh,
