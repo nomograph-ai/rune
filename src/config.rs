@@ -29,11 +29,18 @@ pub struct Registry {
     #[serde(default = "default_source")]
     pub source: String,
     /// Environment variable containing a PAT for HTTPS authentication.
-    /// When set, rune injects the token into git clone/fetch URLs as
-    /// `https://oauth2:TOKEN@host/path.git`. The env var is read at
-    /// runtime -- no secrets in config files.
+    /// Token is resolved at runtime and injected transiently -- never
+    /// persisted in .git/config of cached clones.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub token_env: Option<String>,
+    /// Git user.email for commits to this registry. Required for `rune push`.
+    /// If unset, commits use whatever git defaults to (which may be wrong
+    /// for cross-namespace registries).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub git_email: Option<String>,
+    /// Git user.name for commits to this registry.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub git_name: Option<String>,
 }
 
 fn default_source() -> String {
