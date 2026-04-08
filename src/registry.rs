@@ -162,12 +162,12 @@ fn ensure_archive_registry(reg: &Registry, dest: &Path) -> Result<()> {
         "60",
     ];
 
-    // Add auth header if token available
-    let auth_header;
-    if let Ok(Some(token)) = resolve_token(reg) {
-        auth_header = format!("PRIVATE-TOKEN: {token}");
+    // Add auth header if token available (transient, not persisted)
+    let auth_hdr;
+    if let Ok(Some(header)) = curl_auth_header(reg) {
+        auth_hdr = header;
         curl_args.push("-H");
-        curl_args.push(&auth_header);
+        curl_args.push(&auth_hdr);
     }
 
     // If we have a cached etag and the dest exists, use conditional request
@@ -354,31 +354,16 @@ fn git_output(args: &[&str], dir: &Path) -> Result<String> {
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
-/// Resolve the authenticated URL for a registry.
+// ── Authentication ──────────────────────────────────────────────────
+
+/// Resolve a PAT for a registry.
 ///
 /// Token resolution order:
 /// 1. `token_env` -- explicit env var in config (highest priority)
 /// 2. `glab auth token` -- if URL contains gitlab.com and glab is installed
 /// 3. `gh auth token` -- if URL contains github.com and gh is installed
-/// 4. No auth -- use URL as-is (public repos, or system credential helpers)
-fn authenticated_url(reg: &Registry) -> Result<String> {
-    let token = resolve_token(reg)?;
-
-    let Some(token) = token else {
-        return Ok(reg.url.clone());
-    };
-
-    // Inject oauth2:token into HTTPS URL
-    if let Some(rest) = reg.url.strip_prefix("https://") {
-        Ok(format!("https://oauth2:{token}@{rest}"))
-    } else {
-        // Non-HTTPS URL with a token -- warn but proceed without injection
-        Ok(reg.url.clone())
-    }
-}
-
-/// Resolve a PAT for a registry.
-fn resolve_token(reg: &Registry) -> Result<Option<String>> {
+/// 4. No auth -- rely on system credential helpers or public access
+pub fn resolve_token(reg: &Registry) -> Result<Option<String>> {
     // 1. Explicit env var takes priority
     if let Some(ref env_var) = reg.token_env {
         return match std::env::var(env_var) {
@@ -419,32 +404,174 @@ fn cli_token(cmd: &str, args: &[&str]) -> Option<String> {
         .filter(|t| !t.is_empty())
 }
 
+/// Build the curl auth header for archive downloads.
+/// Returns None if no token is available.
+fn curl_auth_header(reg: &Registry) -> Result<Option<String>> {
+    let token = resolve_token(reg)?;
+    let Some(token) = token else {
+        return Ok(None);
+    };
+    if reg.url.contains("github.com") || reg.url.contains("github.") {
+        Ok(Some(format!("Authorization: Bearer {token}")))
+    } else {
+        Ok(Some(format!("PRIVATE-TOKEN: {token}")))
+    }
+}
+
+/// Run a git command with transient authentication via GIT_ASKPASS.
+/// Token is resolved at runtime and never persisted in .git/config.
+///
+/// GIT_ASKPASS is set to a one-liner that prints the token. Git calls
+/// it when the server requests credentials. This works for both
+/// GitLab and GitHub HTTPS git operations.
+fn git_command_auth(args: &[&str], dir: Option<&Path>, reg: &Registry) -> Result<()> {
+    let mut cmd = std::process::Command::new("git");
+
+    // Inject credentials via GIT_ASKPASS (transient, per-command)
+    if let Ok(Some(token)) = resolve_token(reg) {
+        // GIT_ASKPASS receives a prompt like "Password for 'https://...': "
+        // We ignore the prompt and always print the token.
+        // printf is available on all platforms we target.
+        cmd.env("GIT_ASKPASS", "/bin/sh");
+        cmd.env("GIT_TERMINAL_PROMPT", "0");
+        // The trick: GIT_ASKPASS is called as: $GIT_ASKPASS "prompt"
+        // We need a command that ignores its arg and prints the token.
+        // Use a helper env var + a tiny script.
+        cmd.env("RUNE_GIT_TOKEN", &token);
+        cmd.env("GIT_ASKPASS", create_askpass_path()?.to_string_lossy().to_string());
+    }
+
+    cmd.args(args);
+    if let Some(d) = dir {
+        cmd.current_dir(d);
+    }
+    let output = cmd.output().context("Failed to start git")?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!(
+            "git {} failed: {}",
+            args.first().unwrap_or(&""),
+            stderr.trim()
+        );
+    }
+    Ok(())
+}
+
+/// Create (or reuse) a tiny askpass script that echoes RUNE_GIT_TOKEN.
+fn create_askpass_path() -> Result<PathBuf> {
+    let cache_dir = Config::cache_dir()?;
+    std::fs::create_dir_all(&cache_dir)?;
+    let path = cache_dir.join(".rune-askpass");
+    if !path.exists() {
+        std::fs::write(&path, "#!/bin/sh\necho \"$RUNE_GIT_TOKEN\"\n")?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700))?;
+        }
+    }
+    Ok(path)
+}
+
+/// Configure local git identity in a registry clone.
+/// Uses git_email/git_name from config, or auto-detects from glab/gh.
+fn configure_identity(repo_dir: &Path, reg: &Registry) -> Result<()> {
+    let email = reg.git_email.as_deref()
+        .map(|s| s.to_string())
+        .or_else(|| {
+            if reg.url.contains("gitlab.com") || reg.url.contains("gitlab.") {
+                cli_token("glab", &["api", "user", "--jq", ".email"])
+            } else if reg.url.contains("github.com") || reg.url.contains("github.") {
+                cli_token("gh", &["api", "user", "--jq", ".email"])
+            } else {
+                None
+            }
+        });
+
+    let name = reg.git_name.as_deref()
+        .map(|s| s.to_string())
+        .or_else(|| {
+            if reg.url.contains("gitlab.com") || reg.url.contains("gitlab.") {
+                cli_token("glab", &["api", "user", "--jq", ".name"])
+            } else if reg.url.contains("github.com") || reg.url.contains("github.") {
+                cli_token("gh", &["api", "user", "--jq", ".name"])
+            } else {
+                None
+            }
+        });
+
+    if let Some(email) = &email {
+        git_command(&["config", "user.email", email], Some(repo_dir))?;
+    }
+    if let Some(name) = &name {
+        git_command(&["config", "user.name", name], Some(repo_dir))?;
+    }
+
+    Ok(())
+}
+
+/// Build a clone URL with `oauth2@` username so GIT_ASKPASS triggers.
+/// The username tells git to ask for credentials; GIT_ASKPASS provides the token.
+/// This URL is only used for the clone command -- the persisted remote is the plain URL.
+fn clone_url(reg: &Registry) -> Result<String> {
+    let has_token = resolve_token(reg)?.is_some();
+    if !has_token {
+        return Ok(reg.url.clone());
+    }
+    // https://gitlab.com/path → https://oauth2@gitlab.com/path
+    if let Some(rest) = reg.url.strip_prefix("https://") {
+        Ok(format!("https://oauth2@{rest}"))
+    } else {
+        Ok(reg.url.clone())
+    }
+}
+
 fn clone(reg: &Registry, dest: &Path, branch: &str) -> Result<()> {
-    let url = authenticated_url(reg)?;
+    let url = clone_url(reg)?;
     let dest_str = dest.to_string_lossy();
-    git_command(
+    // Clone with transient auth -- GIT_ASKPASS provides token, not persisted
+    git_command_auth(
         &[
             "clone", "--quiet", "--depth", "1", "--branch", branch,
             "--single-branch", "--", &url, &dest_str,
         ],
         None,
-    )
+        reg,
+    )?;
+
+    // Scrub auth from persisted remote URL
+    git_command(
+        &["remote", "set-url", "origin", &reg.url],
+        Some(dest),
+    )?;
+
+    // Set identity for future commits
+    configure_identity(dest, reg)?;
+
+    Ok(())
 }
 
 fn pull(repo_dir: &Path, reg: &Registry) -> Result<()> {
-    // If token auth, update the remote URL in case it changed
-    if reg.token_env.is_some() {
-        let url = authenticated_url(reg)?;
-        git_command(
-            &["remote", "set-url", "origin", &url],
-            Some(repo_dir),
-        )?;
-    }
-
+    // Set remote URL with oauth2@ username so GIT_ASKPASS triggers on fetch
+    let url = clone_url(reg)?;
     git_command(
-        &["fetch", "--quiet", "--depth", "1", "origin", "--", &reg.branch],
+        &["remote", "set-url", "origin", &url],
         Some(repo_dir),
     )?;
+
+    // Fetch with transient auth
+    git_command_auth(
+        &["fetch", "--quiet", "--depth", "1", "origin", "--", &reg.branch],
+        Some(repo_dir),
+        reg,
+    )?;
+
+    // Scrub auth from persisted remote URL
+    git_command(
+        &["remote", "set-url", "origin", &reg.url],
+        Some(repo_dir),
+    )?;
+
     let target = format!("origin/{}", reg.branch);
     git_command(
         &["reset", "--quiet", "--hard", &target],
@@ -464,7 +591,8 @@ pub fn skill_commit(repo_dir: &Path, skill_path_relative: &str) -> Option<String
 }
 
 /// Commit and push changes to a registry via git CLI.
-pub fn commit_and_push(repo_dir: &Path, skill_name: &str, branch: &str, message: Option<&str>) -> Result<()> {
+/// Uses transient auth for push -- no PAT in remote URL.
+pub fn commit_and_push(repo_dir: &Path, skill_name: &str, reg: &Registry, message: Option<&str>) -> Result<()> {
     git_command(&["add", "-A", "--", skill_name], Some(repo_dir))?;
 
     // Check if there are staged changes
@@ -485,10 +613,21 @@ pub fn commit_and_push(repo_dir: &Path, skill_name: &str, branch: &str, message:
         &["commit", "--quiet", "-m", msg],
         Some(repo_dir),
     )?;
-    git_command(
-        &["push", "--quiet", "origin", "--", branch],
+
+    // Set remote URL with oauth2@ for push, then scrub after
+    let url = clone_url(reg)?;
+    git_command(&["remote", "set-url", "origin", &url], Some(repo_dir))?;
+
+    let result = git_command_auth(
+        &["push", "--quiet", "origin", "--", &reg.branch],
         Some(repo_dir),
-    )
+        reg,
+    );
+
+    // Always scrub auth from remote URL, even on push failure
+    let _ = git_command(&["remote", "set-url", "origin", &reg.url], Some(repo_dir));
+
+    result
 }
 
 // ── Path operations ─────────────────────────────────────────────────
