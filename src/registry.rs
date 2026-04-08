@@ -593,7 +593,12 @@ pub fn skill_commit(repo_dir: &Path, skill_path_relative: &str) -> Option<String
 /// Commit and push changes to a registry via git CLI.
 /// Uses transient auth for push -- no PAT in remote URL.
 pub fn commit_and_push(repo_dir: &Path, skill_name: &str, reg: &Registry, message: Option<&str>) -> Result<()> {
-    git_command(&["add", "-A", "--", skill_name], Some(repo_dir))?;
+    // Use the actual skill path relative to repo_dir for git add.
+    // This handles both directory skills (spectacle/) and file skills (spectacle.md).
+    let skill_rel = skill_path(repo_dir, reg, skill_name);
+    let rel = skill_rel.strip_prefix(repo_dir).unwrap_or(&skill_rel);
+    let rel_str = rel.to_string_lossy();
+    git_command(&["add", "-A", "--", &rel_str], Some(repo_dir))?;
 
     // Check if there are staged changes
     let status = std::process::Command::new("git")
@@ -634,7 +639,19 @@ pub fn commit_and_push(repo_dir: &Path, skill_name: &str, reg: &Registry, messag
 
 /// Get the path to a skill in a registry. Uses symlink_metadata
 /// to avoid following symlinks. Verifies path stays within repo.
+///
+/// When `local_is_dir` is Some, it overrides the registry-side detection
+/// for skills that don't exist in the registry yet (new skill push).
 pub fn skill_path(repo_dir: &Path, reg: &Registry, skill_name: &str) -> PathBuf {
+    skill_path_with_hint(repo_dir, reg, skill_name, None)
+}
+
+pub fn skill_path_with_hint(
+    repo_dir: &Path,
+    reg: &Registry,
+    skill_name: &str,
+    local_is_dir: Option<bool>,
+) -> PathBuf {
     let base = match &reg.path {
         Some(p) => {
             let resolved = repo_dir.join(p);
@@ -651,7 +668,10 @@ pub fn skill_path(repo_dir: &Path, reg: &Registry, skill_name: &str) -> PathBuf 
         .symlink_metadata()
         .map(|m| m.file_type().is_dir())
         .unwrap_or(false);
-    if is_real_dir {
+
+    // If the path exists in the registry, trust that.
+    // If it doesn't exist, use the local hint (for new skill push).
+    if is_real_dir || local_is_dir == Some(true) {
         return dir_path;
     }
 
