@@ -381,7 +381,6 @@ pub fn push(project_dir: &Path, skill_name: &str, message: Option<&str>) -> Resu
     }
 
     let repo_dir = registry::ensure_registry(reg)?;
-    let reg_path = registry::skill_path(&repo_dir, reg, skill_name);
 
     let skills_dir = Manifest::skills_dir(project_dir);
     let local_dir = skills_dir.join(skill_name);
@@ -394,6 +393,10 @@ pub fn push(project_dir: &Path, skill_name: &str, message: Option<&str>) -> Resu
     } else {
         anyhow::bail!("{skill_name} not found locally");
     };
+
+    // Pass local format hint so new skills get the right path in the registry
+    let local_is_dir = Some(local_path.is_dir());
+    let reg_path = registry::skill_path_with_hint(&repo_dir, reg, skill_name, local_is_dir);
 
     if registry::is_dry_run() {
         eprintln!("  {}: {} to {}",
