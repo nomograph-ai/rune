@@ -410,7 +410,7 @@ pub fn push(project_dir: &Path, skill_name: &str, message: Option<&str>) -> Resu
     registry::copy_skill(local_path, &reg_path)?;
 
     // Commit and push via git CLI
-    registry::commit_and_push(&repo_dir, skill_name, &reg.branch, message)?;
+    registry::commit_and_push(&repo_dir, skill_name, reg, message)?;
 
     eprintln!("Pushed {} to {}", skill_name, color::cyan(&reg.name));
     Ok(())
@@ -962,19 +962,23 @@ pub fn doctor(project_dir: &Path) -> Result<()> {
         let ro = if reg.readonly { color::dim(" (readonly)") } else { String::new() };
         let src = color::dim(&format!(" [{}]", reg.source));
         let auth = if reg.token_env.is_some() {
-            color::dim(" (token_env)")
+            color::dim(&format!(" (${} auth)", reg.token_env.as_deref().unwrap_or("?")))
         } else if reg.url.contains("gitlab.com") || reg.url.contains("github.com") {
             color::dim(" (cli auth)")
         } else {
             String::new()
         };
+        let identity = match (&reg.git_email, &reg.git_name) {
+            (Some(e), _) => color::dim(&format!(" <{e}>")),
+            _ => String::new(),
+        };
 
         if repo_dir.exists() {
             let skills = registry::list_skills(&repo_dir, reg).unwrap_or_default();
-            eprintln!("  registry {}{ro}{src}{auth}: {} skills {}",
+            eprintln!("  registry {}{ro}{src}{auth}{identity}: {} skills {}",
                 color::cyan(&reg.name), skills.len(), color::green("ok"));
         } else {
-            eprintln!("  registry {}{ro}{src}{auth}: {}",
+            eprintln!("  registry {}{ro}{src}{auth}{identity}: {}",
                 color::cyan(&reg.name), color::dim("not cached"));
         }
     }
