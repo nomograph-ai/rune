@@ -4,7 +4,7 @@
 
 [![pipeline](https://gitlab.com/nomograph/rune/badges/main/pipeline.svg)](https://gitlab.com/nomograph/rune/-/pipelines)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-![built with GitLab](https://img.shields.io/badge/built_with-GitLab-FC6D26?logo=gitlab)
+[![built with GitLab](https://img.shields.io/badge/built_with-GitLab-FC6D26?logo=gitlab)](https://gitlab.com/nomograph/rune)
 
 Skill registry manager for AI coding agents. Syncs markdown skill files
 from git-based registries into `.claude/skills/`.
@@ -32,7 +32,7 @@ the mise config block with current version and URLs.
 ```bash
 rune setup                  # one-time: create config, install Claude Code hook
 rune init                   # per-project: create .claude/rune.toml manifest
-rune add tidy --from public # add a skill from a registry
+rune add tidy --from runes  # add a skill from a registry
 rune sync                   # pull latest from registries
 rune check                  # show drift between local and registries
 rune push tidy              # push local changes back to registry
@@ -48,22 +48,14 @@ in `~/.config/rune/config.toml`:
 ```toml
 # Public registry -- anyone can clone
 [[registry]]
-name = "public"
-url = "https://gitlab.com/my-org/skills.git"
+name = "runes"
+url = "https://gitlab.com/nomograph/runes.git"
 
 # Private registry -- requires authentication
 [[registry]]
 name = "private"
 url = "https://gitlab.com/work-namespace/private-skills.git"
 token_env = "RUNE_TOKEN_PRIVATE"
-
-# Read-only upstream -- browse and import, can't push
-[[registry]]
-name = "anthropic"
-url = "https://github.com/anthropics/skills"
-readonly = true
-path = "skills"
-source = "archive"
 ```
 
 ### Authentication
@@ -123,7 +115,7 @@ Each project declares which skills it needs in `.claude/rune.toml`:
 
 ```toml
 [skills]
-tidy = "public"           # pinned to specific registry
+tidy = "runes"            # pinned to specific registry
 research = {}             # resolved by registry priority
 voice = "private"         # from private registry
 ```
@@ -141,7 +133,7 @@ This enables accurate drift detection:
 Browse and import skills from third-party registries:
 
 ```bash
-rune browse anthropic               # list available skills
+rune browse k-dense                 # list available skills
 rune import scanpy@k-dense          # import into your own registry
 rune upstream                       # check for upstream updates
 rune diff scanpy                    # compare local vs upstream
@@ -157,8 +149,9 @@ rune installs a Claude Code PostToolUse hook that fires when a skill
 file is modified. The hook runs `rune check` and surfaces drift to
 Claude as context, prompting you to push or revert.
 
-When muxr creates a session, a pre_create hook runs `rune sync` so
-skills are always current before Claude launches.
+If you use [muxr](https://gitlab.com/nomograph/muxr) for session
+management, add `rune sync` as a `pre_create` hook so skills are
+pulled before each session starts.
 
 ## Commands
 
