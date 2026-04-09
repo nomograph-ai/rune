@@ -5,6 +5,7 @@ include:
       binary_name: rune
       project_description: "Skill registry manager for AI coding agents."
       audit_allow_failure: false
+      crates_publish: true
 
 stages: [test, build, sign, publish, release]
 
