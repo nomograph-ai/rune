@@ -1,8 +1,9 @@
 [package]
-name = "rune"
+name = "nomograph-rune"
 version = "0.5.4"
 edition = "2024"
 description = "Skill registry manager for AI coding agents"
+authors = ["Andrew Dunn <andunn@gitlab.com>"]
 repository = "https://gitlab.com/nomograph/rune"
 homepage = "https://gitlab.com/nomograph/rune"
 keywords = ["ai", "skills", "claude-code", "agent", "registry"]
