@@ -1,3 +1,5 @@
+#![deny(warnings, clippy::all)]
+
 mod color;
 mod commands;
 mod config;

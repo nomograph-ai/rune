@@ -1,3 +1,5 @@
+#![deny(warnings, clippy::all)]
+
 pub mod color;
 pub mod commands;
 pub mod config;
