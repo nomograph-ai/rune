@@ -463,6 +463,65 @@ pub fn add(project_dir: &Path, skill_name: &str, registry_name: Option<&str>) ->
     Ok(())
 }
 
+/// Add one or more skills, or all skills from a registry.
+pub fn add_many(project_dir: &Path, skills: &[String], registry_name: Option<&str>, all: bool) -> Result<()> {
+    if all {
+        let reg_name = registry_name.expect("--all requires --from (enforced by clap)");
+        let config = Config::load()?;
+        let reg = config
+            .registry(reg_name)
+            .with_context(|| format!("Unknown registry: {reg_name}"))?;
+        let repo_dir = registry::ensure_registry(reg)?;
+        let skill_names = registry::list_skills(&repo_dir, reg)?;
+        for name in &skill_names {
+            if let Err(e) = add(project_dir, name, Some(reg_name)) {
+                eprintln!("  {name}: {e}");
+            }
+        }
+        return Ok(());
+    }
+    for skill in skills {
+        add(project_dir, skill, registry_name)?;
+    }
+    Ok(())
+}
+
+/// Remove manifest entries whose registry is not configured on this machine.
+pub fn prune(project_dir: &Path) -> Result<()> {
+    let config = Config::load()?;
+    let mut manifest = Manifest::load(project_dir)?;
+    let configured: std::collections::HashSet<String> =
+        config.registry.iter().map(|r| r.name.clone()).collect();
+
+    let stale: Vec<String> = manifest
+        .skills
+        .iter()
+        .filter_map(|(name, entry)| {
+            entry.registry.as_ref().and_then(|reg| {
+                if !configured.contains(reg) {
+                    Some(name.clone())
+                } else {
+                    None
+                }
+            })
+        })
+        .collect();
+
+    if stale.is_empty() {
+        eprintln!("No stale entries found.");
+        return Ok(());
+    }
+
+    for name in &stale {
+        let reg = manifest.skills[name].registry.as_deref().unwrap_or("?");
+        eprintln!("  {} {name} (registry: {reg})", color::red("pruned"));
+        manifest.skills.remove(name);
+    }
+    manifest.save(project_dir)?;
+    eprintln!("Pruned {} skill(s). Run `rune sync` to update.", stale.len());
+    Ok(())
+}
+
 /// Push a local skill change back to its registry. All git operations via CLI.
 pub fn push(project_dir: &Path, skill_name: &str, message: Option<&str>) -> Result<()> {
     registry::validate_skill_name(skill_name)?;
@@ -1112,6 +1171,31 @@ pub fn doctor(project_dir: &Path) -> Result<()> {
         eprintln!("  lockfile: {} skills locked {}", lf.skills.len(), color::green("ok"));
     } else {
         eprintln!("  lockfile: {}", color::dim("none (run rune sync to create)"));
+    }
+
+    // Manifest health: check for entries referencing unconfigured registries
+    let configured: std::collections::HashSet<String> =
+        config.registry.iter().map(|r| r.name.clone()).collect();
+    if let Some(manifest) = Manifest::try_load(project_dir) {
+        let stale: Vec<(&String, &str)> = manifest
+            .skills
+            .iter()
+            .filter_map(|(name, entry)| {
+                entry.registry.as_deref().and_then(|reg| {
+                    if !configured.contains(reg) { Some((name, reg)) } else { None }
+                })
+            })
+            .collect();
+        if stale.is_empty() {
+            eprintln!("  manifest: {} skills {}", manifest.skills.len(), color::green("ok"));
+        } else {
+            eprintln!("  manifest: {} skill(s) reference unconfigured registr{}:",
+                stale.len(), if stale.len() == 1 { "y" } else { "ies" });
+            for (name, reg) in &stale {
+                eprintln!("    {} (registry: {})", color::yellow(name), color::cyan(reg));
+            }
+            eprintln!("  run: rune prune  (remove stale entries)");
+        }
     }
 
     eprintln!();
