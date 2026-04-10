@@ -1,7 +1,8 @@
 use anyhow::{Context, Result};
 use std::path::Path;
 
-use super::resolve_registry;
+use super::check::check_skill;
+use super::{resolve_registry, SkillStatus};
 use crate::color;
 use crate::config::Config;
 use crate::lockfile::{Lockfile, LockedSkill};
@@ -132,6 +133,32 @@ pub fn sync(project_dir: &Path, force: bool) -> Result<u32> {
         // Multi-agent support: .agent/skills/ symlink + AGENTS.md
         ensure_agent_symlink(project_dir)?;
         generate_agents_md(project_dir, &manifest)?;
+
+        // Bundled enforcement: verify state after sync.
+        // Re-load lockfile (just saved) and check all skills.
+        let lockfile = Lockfile::load(project_dir).unwrap_or_default();
+        let mut drifted = 0u32;
+        for (skill_name, entry) in &manifest.skills {
+            if let Ok((name, _, status)) =
+                check_skill(skill_name, entry, &config, project_dir, &lockfile)
+                && !matches!(status, SkillStatus::Current)
+            {
+                eprintln!(
+                    "  {}: {} after sync",
+                    name,
+                    color::yellow("still drifted")
+                );
+                drifted += 1;
+            }
+        }
+        if drifted > 0 {
+            eprintln!(
+                "\n{}",
+                color::yellow(&format!(
+                    "{drifted} skill(s) still drifted after sync. Run `rune check` for details."
+                ))
+            );
+        }
     }
 
     Ok(count)
