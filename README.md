@@ -145,6 +145,8 @@ commit, and whether you've modified them locally.
 
 ## Drift detection
 
+![drift detection](drift.svg)
+
 rune installs a Claude Code PostToolUse hook that fires when a skill
 file is modified. The hook runs `rune check` and surfaces drift to
 Claude as context, prompting you to push or revert.
