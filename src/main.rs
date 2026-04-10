@@ -56,14 +56,21 @@ enum Commands {
     /// Initialize rune in the current project (creates .claude/rune.toml)
     Init,
 
-    /// Add a skill from a registry to this project
+    /// Add one or more skills from a registry to this project
     Add {
-        /// Skill name
-        skill: String,
-        /// Pin to a specific registry
+        /// Skill name(s) to add
+        #[arg(required_unless_present = "all")]
+        skills: Vec<String>,
+        /// Registry to add from
         #[arg(long)]
         from: Option<String>,
+        /// Add all skills from the specified registry (requires --from)
+        #[arg(long, requires = "from")]
+        all: bool,
     },
+
+    /// Remove manifest entries whose registry is not configured
+    Prune,
 
     /// Remove a skill from this project
     Remove {
@@ -176,7 +183,8 @@ fn main() -> Result<()> {
     match cli.command {
         Commands::Setup => setup::setup(),
         Commands::Init => setup::init(&project_dir),
-        Commands::Add { skill, from } => commands::add(&project_dir, &skill, from.as_deref()),
+        Commands::Add { skills, from, all } => commands::add_many(&project_dir, &skills, from.as_deref(), all),
+        Commands::Prune => commands::prune(&project_dir),
         Commands::Remove { skill } => commands::remove(&project_dir, &skill),
         Commands::Check { file } => {
             let results = commands::check(&project_dir, file.as_deref())?;
