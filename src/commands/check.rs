@@ -1,29 +1,35 @@
 use anyhow::Result;
 use std::path::Path;
 
-use super::{resolve_registry, DriftDirection, SkillStatus};
+use super::{DriftDirection, SkillStatus, resolve_registry_typed};
 use crate::config::Config;
 use crate::lockfile::Lockfile;
-use crate::manifest::Manifest;
+use crate::manifest::{ALL_TYPES, ArtifactType, Manifest};
 use crate::registry;
 
-/// Check a single skill against its registry.
+/// Check a single item of any type against its registry.
 /// Uses lockfile for accurate drift direction instead of unreliable mtime.
-pub(crate) fn check_skill(
-    skill_name: &str,
+pub(crate) fn check_item(
+    name: &str,
     entry: &crate::manifest::SkillEntry,
     config: &Config,
     project_dir: &Path,
     lockfile: &Lockfile,
+    artifact_type: ArtifactType,
 ) -> Result<(String, String, SkillStatus)> {
-    let reg = resolve_registry(skill_name, entry, config)?;
+    let reg = resolve_registry_typed(name, entry, config, artifact_type)?;
     let repo_dir = registry::ensure_registry(reg)?;
-    let reg_path = registry::skill_path(&repo_dir, reg, skill_name);
+    let reg_path = registry::artifact_path(&repo_dir, reg, name, artifact_type);
 
-    let local_path = if registry::is_directory_skill(&reg_path) {
-        Manifest::skills_dir(project_dir).join(skill_name)
+    let artifact_dir = Manifest::load(project_dir)
+        .map(|m| m.artifact_dir(project_dir, artifact_type))
+        .unwrap_or_else(|_| project_dir.join(artifact_type.default_dir()));
+
+    let local_path = if artifact_type.is_directory_type() && registry::is_directory_skill(&reg_path)
+    {
+        artifact_dir.join(name)
     } else {
-        Manifest::skills_dir(project_dir).join(format!("{skill_name}.md"))
+        artifact_dir.join(format!("{name}.md"))
     };
 
     let status = match (local_path.exists(), reg_path.exists()) {
@@ -37,7 +43,7 @@ pub(crate) fn check_skill(
                 SkillStatus::Current
             } else {
                 // Use lockfile for drift direction
-                let direction = if let Some(locked) = lockfile.skills.get(skill_name) {
+                let direction = if let Some(locked) = lockfile.section(artifact_type).get(name) {
                     let local_changed = local_hash.as_deref() != Some(locked.hash.as_str());
                     let reg_changed = reg_hash.as_deref() != Some(locked.hash.as_str());
                     match (local_changed, reg_changed) {
@@ -53,35 +59,40 @@ pub(crate) fn check_skill(
         }
     };
 
-    Ok((skill_name.to_string(), reg.name.clone(), status))
+    Ok((name.to_string(), reg.name.clone(), status))
 }
 
-/// Check all skills in the project manifest.
-pub fn check(project_dir: &Path, file_filter: Option<&str>) -> Result<Vec<(String, String, SkillStatus)>> {
+/// Check all items in the project manifest.
+pub fn check(
+    project_dir: &Path,
+    file_filter: Option<&str>,
+) -> Result<Vec<(String, String, SkillStatus)>> {
     let config = Config::load()?;
     let manifest = Manifest::load(project_dir)?;
     let lockfile = Lockfile::load(project_dir).unwrap_or_default();
 
     let mut results = Vec::new();
 
-    for (skill_name, entry) in &manifest.skills {
-        if let Err(e) = registry::validate_skill_name(skill_name) {
-            eprintln!("  {skill_name}: {e}");
-            continue;
-        }
-        if let Some(filter) = file_filter {
-            let filter_stem = Path::new(filter)
-                .file_stem()
-                .map(|s| s.to_string_lossy().to_string())
-                .unwrap_or_default();
-            if filter_stem != *skill_name {
+    for at in ALL_TYPES {
+        for (name, entry) in manifest.section(at) {
+            if let Err(e) = registry::validate_name(name) {
+                eprintln!("  {name}: {e}");
                 continue;
             }
-        }
+            if let Some(filter) = file_filter {
+                let filter_stem = Path::new(filter)
+                    .file_stem()
+                    .map(|s| s.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                if filter_stem != *name {
+                    continue;
+                }
+            }
 
-        match check_skill(skill_name, entry, &config, project_dir, &lockfile) {
-            Ok(result) => results.push(result),
-            Err(e) => eprintln!("  {skill_name}: error: {e}"),
+            match check_item(name, entry, &config, project_dir, &lockfile, at) {
+                Ok(result) => results.push(result),
+                Err(e) => eprintln!("  {name}: error: {e}"),
+            }
         }
     }
 

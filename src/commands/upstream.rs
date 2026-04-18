@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 
 use crate::color;
 use crate::config::Config;
+use crate::manifest::{ALL_TYPES, ArtifactType};
 use crate::pedigree::{self, Pedigree};
 use crate::registry;
 
@@ -30,37 +31,57 @@ fn find_imported_skill<'a>(
     anyhow::bail!("{skill_name} not found in any writable registry")
 }
 
-/// Browse available skills in an upstream registry with descriptions.
-pub fn browse(registry_name: &str) -> Result<()> {
+/// Browse available items in a registry. Shows all types when filter is None.
+pub fn browse(registry_name: &str, type_filter: Option<ArtifactType>) -> Result<()> {
     let config = Config::load()?;
     let reg = config
         .registry(registry_name)
         .with_context(|| format!("Unknown registry: {registry_name}"))?;
 
     let repo_dir = registry::ensure_registry(reg)?;
-    let skills = registry::list_skills(&repo_dir, reg)?;
+    let ro = if reg.readonly {
+        color::dim(" (read-only)")
+    } else {
+        String::new()
+    };
 
-    if skills.is_empty() {
-        eprintln!("No skills in registry {registry_name}");
-        return Ok(());
+    let types = match type_filter {
+        Some(t) => vec![t],
+        None => ALL_TYPES.to_vec(),
+    };
+
+    let mut total = 0;
+    for at in &types {
+        let items = registry::list_artifacts(&repo_dir, reg, *at)?;
+        if items.is_empty() {
+            continue;
+        }
+
+        total += items.len();
+        eprintln!(
+            "{}{ro} -- {} ({} items)\n",
+            color::cyan(registry_name),
+            at.section(),
+            items.len()
+        );
+
+        for item in &items {
+            let path = registry::artifact_path(&repo_dir, reg, item, *at);
+            let pedigree = Pedigree::from_skill(&path).unwrap_or_default();
+            let desc = pedigree.description.unwrap_or_else(|| "-".to_string());
+            let desc_short = if desc.chars().count() > 70 {
+                let truncated: String = desc.chars().take(67).collect();
+                format!("{truncated}...")
+            } else {
+                desc
+            };
+            println!("  {item:<24} {}", color::dim(&desc_short));
+        }
+        eprintln!();
     }
 
-    let ro = if reg.readonly { color::dim(" (read-only)") } else { String::new() };
-    eprintln!("{}{ro}: {} skills\n", color::cyan(registry_name), skills.len());
-
-    for skill in &skills {
-        let path = registry::skill_path(&repo_dir, reg, skill);
-        let pedigree = Pedigree::from_skill(&path).unwrap_or_default();
-        let desc = pedigree
-            .description
-            .unwrap_or_else(|| "-".to_string());
-        let desc_short = if desc.chars().count() > 70 {
-            let truncated: String = desc.chars().take(67).collect();
-            format!("{truncated}...")
-        } else {
-            desc
-        };
-        println!("  {skill:<24} {}", color::dim(&desc_short));
+    if total == 0 {
+        eprintln!("No items in registry {registry_name}");
     }
 
     Ok(())
@@ -123,8 +144,8 @@ pub fn import(skill_ref: &str, target_name: Option<&str>) -> Result<()> {
 
     // Get the skill-specific commit hash from the upstream registry
     let skill_rel = registry::skill_path_relative(source_reg, skill_name);
-    let upstream_commit = registry::skill_commit(&source_dir, &skill_rel)
-        .unwrap_or_else(|| "unknown".to_string());
+    let upstream_commit =
+        registry::skill_commit(&source_dir, &skill_rel).unwrap_or_else(|| "unknown".to_string());
 
     // Reject symlink sources
     if source_path.symlink_metadata()?.file_type().is_symlink() {
@@ -237,9 +258,17 @@ pub fn upstream(quiet: bool) -> Result<()> {
         return Ok(());
     }
 
-    eprintln!("{}\n",
-        color::yellow(&format!("rune: {} upstream update(s) available", updates.len())));
-    eprintln!("  {:<20} {:<30} {:<10} {:<10} STATUS", "SKILL", "ORIGIN", "LOCAL", "UPSTREAM");
+    eprintln!(
+        "{}\n",
+        color::yellow(&format!(
+            "rune: {} upstream update(s) available",
+            updates.len()
+        ))
+    );
+    eprintln!(
+        "  {:<20} {:<30} {:<10} {:<10} STATUS",
+        "SKILL", "ORIGIN", "LOCAL", "UPSTREAM"
+    );
 
     for (name, origin, local, upstream, modified) in &updates {
         let status = if *modified {
@@ -288,7 +317,10 @@ pub fn diff(skill_name: &str) -> Result<()> {
     let source_path = registry::skill_path(&source_dir, source_reg, skill_name);
 
     if !source_path.exists() {
-        anyhow::bail!("{skill_name} no longer exists in upstream {}", source_reg.name);
+        anyhow::bail!(
+            "{skill_name} no longer exists in upstream {}",
+            source_reg.name
+        );
     }
 
     eprintln!("origin: {origin}");
@@ -305,8 +337,10 @@ pub fn diff(skill_name: &str) -> Result<()> {
         let status = std::process::Command::new("diff")
             .args([
                 "-ru",
-                "--label", &format!("{skill_name} (imported)"),
-                "--label", &format!("{skill_name} (upstream)"),
+                "--label",
+                &format!("{skill_name} (imported)"),
+                "--label",
+                &format!("{skill_name} (upstream)"),
             ])
             .arg(&skill_path)
             .arg(&source_path)
@@ -332,8 +366,10 @@ pub fn diff(skill_name: &str) -> Result<()> {
         let status = std::process::Command::new("diff")
             .args([
                 "-u",
-                "--label", &format!("{skill_name} (imported)"),
-                "--label", &format!("{skill_name} (upstream)"),
+                "--label",
+                &format!("{skill_name} (imported)"),
+                "--label",
+                &format!("{skill_name} (upstream)"),
             ])
             .arg(&local_file)
             .arg(&upstream_file)
@@ -388,18 +424,23 @@ pub fn update(skill_name: &str, force: bool) -> Result<()> {
     let source_path = registry::skill_path(&source_dir, source_reg, skill_name);
 
     if !source_path.exists() {
-        anyhow::bail!("{skill_name} no longer exists in upstream {}", source_reg.name);
+        anyhow::bail!(
+            "{skill_name} no longer exists in upstream {}",
+            source_reg.name
+        );
     }
 
     let skill_rel = registry::skill_path_relative(source_reg, skill_name);
-    let upstream_commit = registry::skill_commit(&source_dir, &skill_rel)
-        .unwrap_or_else(|| "unknown".to_string());
+    let upstream_commit =
+        registry::skill_commit(&source_dir, &skill_rel).unwrap_or_else(|| "unknown".to_string());
 
     if registry::is_dry_run() {
-        eprintln!("  {}: {} from {} (commit {upstream_commit})",
+        eprintln!(
+            "  {}: {} from {} (commit {upstream_commit})",
             skill_name,
             color::yellow("would update"),
-            color::cyan(&source_reg.name));
+            color::cyan(&source_reg.name)
+        );
         return Ok(());
     }
 
@@ -422,7 +463,8 @@ pub fn update(skill_name: &str, force: bool) -> Result<()> {
 
     eprintln!(
         "  updated {} from {} (commit {upstream_commit})",
-        skill_name, color::cyan(&source_reg.name)
+        skill_name,
+        color::cyan(&source_reg.name)
     );
     eprintln!("  push: rune push {skill_name}");
 

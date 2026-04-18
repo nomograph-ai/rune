@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 
 use crate::color;
 use crate::config::Config;
-use crate::manifest::SkillEntry;
+use crate::manifest::{ArtifactType, SkillEntry};
 use crate::registry;
 
 mod check;
@@ -13,20 +13,22 @@ mod upstream;
 
 // Re-export all public functions so callers keep using `commands::foo`
 pub use check::check;
-pub use crud::{add, push, remove};
+pub use crud::{add_many, prune, push, remove};
 pub use info::{audit, clean, doctor, ls, ls_registry, status};
 pub use sync::sync;
 pub use upstream::{browse, diff, import, update, upstream};
 
-/// Status of a skill relative to its registry.
+/// Status of an item relative to its registry.
 #[derive(Debug)]
 pub enum SkillStatus {
     Current,
-    Drifted { direction: DriftDirection },
-    Missing,         // in manifest but not on disk
+    Drifted {
+        direction: DriftDirection,
+    },
+    Missing, // in manifest but not on disk
     #[allow(dead_code)]
-    Unregistered,    // on disk but not in manifest
-    RegistryMissing, // in manifest but skill not found in any registry
+    Unregistered, // on disk but not in manifest
+    RegistryMissing, // in manifest but item not found in any registry
 }
 
 #[derive(Debug)]
@@ -75,12 +77,12 @@ impl std::fmt::Display for SkillStatus {
     }
 }
 
-/// Resolve which registry to use for a skill.
-/// If pinned in manifest, use that. Otherwise resolve by priority.
-fn resolve_registry<'a>(
-    skill_name: &str,
+/// Resolve which registry to use for an item of a given type.
+fn resolve_registry_typed<'a>(
+    name: &str,
     entry: &SkillEntry,
     config: &'a Config,
+    artifact_type: ArtifactType,
 ) -> Result<&'a crate::config::Registry> {
     if let Some(ref pinned) = entry.registry {
         config
@@ -93,7 +95,7 @@ fn resolve_registry<'a>(
             let _ = registry::ensure_registry(reg);
         }
         config
-            .resolve_skill(skill_name, &cache_dir)
-            .with_context(|| format!("{skill_name}: not found in any registry"))
+            .resolve_artifact(name, &cache_dir, artifact_type)
+            .with_context(|| format!("{name}: not found in any registry"))
     }
 }

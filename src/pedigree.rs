@@ -27,8 +27,7 @@ impl Pedigree {
             return Ok(Self::default());
         }
 
-        let content =
-            std::fs::read_to_string(&skill_file).context("Failed to read SKILL.md")?;
+        let content = std::fs::read_to_string(&skill_file).context("Failed to read SKILL.md")?;
 
         Self::parse_frontmatter(&content)
     }
@@ -82,8 +81,8 @@ impl Pedigree {
             path.to_path_buf()
         };
 
-        let content = std::fs::read_to_string(&skill_file)
-            .unwrap_or_else(|_| "---\n---\n".to_string());
+        let content =
+            std::fs::read_to_string(&skill_file).unwrap_or_else(|_| "---\n---\n".to_string());
 
         let updated = self.update_frontmatter(&content);
         std::fs::write(&skill_file, updated)
@@ -294,7 +293,8 @@ mod tests {
 
     #[test]
     fn update_frontmatter_adds_pedigree() {
-        let content = "---\nname: scanpy\ndescription: Single-cell RNA sequencing\n---\n\n# Scanpy\n";
+        let content =
+            "---\nname: scanpy\ndescription: Single-cell RNA sequencing\n---\n\n# Scanpy\n";
         let p = Pedigree {
             origin: Some("k-dense".to_string()),
             imported: Some("2026-04-06".to_string()),

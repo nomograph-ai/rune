@@ -96,10 +96,7 @@ fn copy_skill_rejects_symlink_source() {
     // Create a symlink as the "skill"
     unix_fs::symlink("/etc/passwd", tmp.path().join("evil-skill")).unwrap();
 
-    let result = rune::registry::copy_skill(
-        &tmp.path().join("evil-skill"),
-        &target,
-    );
+    let result = rune::registry::copy_skill(&tmp.path().join("evil-skill"), &target);
     assert!(
         result.is_err(),
         "SECURITY: copy_skill should reject symlink sources"
@@ -265,11 +262,11 @@ fn pedigree_roundtrip() {
 fn pedigree_handles_malformed_frontmatter() {
     let tmp = tempfile::tempdir().unwrap();
     let cases: &[(&str, bool)] = &[
-        ("", false),                              // empty
-        ("no frontmatter here", false),           // no ---
-        ("---\n", false),                         // unclosed
-        ("---\nname: test\n---\n", true),         // valid
-        ("---\n\n---\nbody", false),              // empty frontmatter (no name)
+        ("", false),                                     // empty
+        ("no frontmatter here", false),                  // no ---
+        ("---\n", false),                                // unclosed
+        ("---\nname: test\n---\n", true),                // valid
+        ("---\n\n---\nbody", false),                     // empty frontmatter (no name)
         ("---\nname: has:colons:in:value\n---\n", true), // colons in value
     ];
     for (i, (content, should_have_name)) in cases.iter().enumerate() {
@@ -278,7 +275,10 @@ fn pedigree_handles_malformed_frontmatter() {
         let result = rune::pedigree::Pedigree::from_skill(&file);
         assert!(result.is_ok(), "Should not panic on: {content:?}");
         if *should_have_name {
-            assert!(result.unwrap().name.is_some(), "Expected name in: {content:?}");
+            assert!(
+                result.unwrap().name.is_some(),
+                "Expected name in: {content:?}"
+            );
         }
     }
 }
@@ -327,7 +327,11 @@ fn list_skills_requires_skill_md() {
 
     // Directory WITH SKILL.md -- should be listed
     fs::create_dir_all(base.join("valid-skill")).unwrap();
-    fs::write(base.join("valid-skill").join("SKILL.md"), "---\nname: valid\n---\n").unwrap();
+    fs::write(
+        base.join("valid-skill").join("SKILL.md"),
+        "---\nname: valid\n---\n",
+    )
+    .unwrap();
 
     // Directory WITHOUT SKILL.md -- should NOT be listed
     fs::create_dir_all(base.join("not-a-skill")).unwrap();
@@ -335,7 +339,11 @@ fn list_skills_requires_skill_md() {
 
     // Dotdir -- should NOT be listed
     fs::create_dir_all(base.join(".hidden")).unwrap();
-    fs::write(base.join(".hidden").join("SKILL.md"), "---\nname: hidden\n---\n").unwrap();
+    fs::write(
+        base.join(".hidden").join("SKILL.md"),
+        "---\nname: hidden\n---\n",
+    )
+    .unwrap();
 
     let reg = rune::config::Registry {
         name: "test".to_string(),
@@ -418,18 +426,24 @@ fn lockfile_roundtrip() {
     fs::create_dir_all(project.join(".claude")).unwrap();
 
     let mut lf = rune::lockfile::Lockfile::default();
-    lf.skills.insert("tidy".to_string(), rune::lockfile::LockedSkill {
-        registry: "runes".to_string(),
-        hash: "abc123".to_string(),
-        registry_commit: Some("def456".to_string()),
-        synced_at: "2026-04-07".to_string(),
-    });
-    lf.skills.insert("voice".to_string(), rune::lockfile::LockedSkill {
-        registry: "arcana".to_string(),
-        hash: "789abc".to_string(),
-        registry_commit: None,
-        synced_at: "2026-04-07".to_string(),
-    });
+    lf.skills.insert(
+        "tidy".to_string(),
+        rune::lockfile::LockedSkill {
+            registry: "runes".to_string(),
+            hash: "abc123".to_string(),
+            registry_commit: Some("def456".to_string()),
+            synced_at: "2026-04-07".to_string(),
+        },
+    );
+    lf.skills.insert(
+        "voice".to_string(),
+        rune::lockfile::LockedSkill {
+            registry: "arcana".to_string(),
+            hash: "789abc".to_string(),
+            registry_commit: None,
+            synced_at: "2026-04-07".to_string(),
+        },
+    );
 
     lf.save(project).unwrap();
 
@@ -492,18 +506,24 @@ fn color_functions_return_content() {
 
 #[test]
 fn skill_status_display() {
-    use rune::commands::{SkillStatus, DriftDirection};
+    use rune::commands::{DriftDirection, SkillStatus};
 
     let current = SkillStatus::Current;
     assert_eq!(format!("{current}"), "CURRENT");
 
-    let drifted = SkillStatus::Drifted { direction: DriftDirection::LocalNewer };
+    let drifted = SkillStatus::Drifted {
+        direction: DriftDirection::LocalNewer,
+    };
     assert!(format!("{drifted}").contains("local is newer"));
 
-    let drifted = SkillStatus::Drifted { direction: DriftDirection::RegistryNewer };
+    let drifted = SkillStatus::Drifted {
+        direction: DriftDirection::RegistryNewer,
+    };
     assert!(format!("{drifted}").contains("registry is newer"));
 
-    let drifted = SkillStatus::Drifted { direction: DriftDirection::Diverged };
+    let drifted = SkillStatus::Drifted {
+        direction: DriftDirection::Diverged,
+    };
     assert!(format!("{drifted}").contains("diverged"));
 
     let missing = SkillStatus::Missing;
@@ -524,16 +544,20 @@ fn lockfile_detects_local_modification() {
     fs::write(
         skills_dir.join("test-skill").join("SKILL.md"),
         "---\nname: test\n---\nmodified content",
-    ).unwrap();
+    )
+    .unwrap();
 
     // Lockfile records a different hash (the "original" content)
     let mut lf = rune::lockfile::Lockfile::default();
-    lf.skills.insert("test-skill".to_string(), rune::lockfile::LockedSkill {
-        registry: "test".to_string(),
-        hash: "original_hash_that_does_not_match".to_string(),
-        registry_commit: Some("abc123".to_string()),
-        synced_at: "2026-04-07".to_string(),
-    });
+    lf.skills.insert(
+        "test-skill".to_string(),
+        rune::lockfile::LockedSkill {
+            registry: "test".to_string(),
+            hash: "original_hash_that_does_not_match".to_string(),
+            registry_commit: Some("abc123".to_string()),
+            synced_at: "2026-04-07".to_string(),
+        },
+    );
 
     // The local hash should NOT match the lockfile hash
     let local_hash = rune::registry::skill_hash(&skills_dir.join("test-skill"));
@@ -556,12 +580,15 @@ fn lockfile_matches_when_unmodified() {
     let hash = rune::registry::skill_hash(&skill_dir).unwrap();
 
     let mut lf = rune::lockfile::Lockfile::default();
-    lf.skills.insert("skill".to_string(), rune::lockfile::LockedSkill {
-        registry: "test".to_string(),
-        hash: hash.clone(),
-        registry_commit: None,
-        synced_at: "2026-04-07".to_string(),
-    });
+    lf.skills.insert(
+        "skill".to_string(),
+        rune::lockfile::LockedSkill {
+            registry: "test".to_string(),
+            hash: hash.clone(),
+            registry_commit: None,
+            synced_at: "2026-04-07".to_string(),
+        },
+    );
 
     // Without modifying the file, hash should still match
     let rehash = rune::registry::skill_hash(&skill_dir).unwrap();
@@ -589,7 +616,8 @@ fn clean_metadata_name_extraction() {
     ];
 
     for (filename, expected) in names_and_expected {
-        let base = filename.trim_start_matches('.')
+        let base = filename
+            .trim_start_matches('.')
             .trim_end_matches(".lock")
             .trim_end_matches(".etag")
             .trim_end_matches("-headers.txt")
@@ -600,4 +628,453 @@ fn clean_metadata_name_extraction() {
             "Failed to extract registry name from {filename}"
         );
     }
+}
+
+// ============================================================
+// Multi-type manifest tests
+// ============================================================
+
+#[test]
+fn multi_type_manifest_roundtrip() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = tmp.path();
+    fs::create_dir_all(project.join(".claude")).unwrap();
+
+    let mut manifest = rune::manifest::Manifest::default();
+
+    // Add skills
+    manifest.skills.insert(
+        "tidy".to_string(),
+        rune::manifest::SkillEntry {
+            registry: Some("runes".to_string()),
+        },
+    );
+    manifest.skills.insert(
+        "voice".to_string(),
+        rune::manifest::SkillEntry { registry: None },
+    );
+
+    // Add agents
+    manifest.agents.insert(
+        "researcher".to_string(),
+        rune::manifest::SkillEntry {
+            registry: Some("runes".to_string()),
+        },
+    );
+
+    // Add rules
+    manifest.rules.insert(
+        "no-emdash".to_string(),
+        rune::manifest::SkillEntry { registry: None },
+    );
+
+    // Save and reload
+    manifest.save(project).unwrap();
+    let loaded = rune::manifest::Manifest::load(project).unwrap();
+
+    // Verify all entries preserved
+    assert_eq!(loaded.skills.len(), 2, "skills count");
+    assert_eq!(loaded.agents.len(), 1, "agents count");
+    assert_eq!(loaded.rules.len(), 1, "rules count");
+    assert_eq!(loaded.total_count(), 4, "total count");
+
+    assert!(loaded.skills.contains_key("tidy"));
+    assert!(loaded.skills.contains_key("voice"));
+    assert!(loaded.agents.contains_key("researcher"));
+    assert!(loaded.rules.contains_key("no-emdash"));
+
+    // Verify pinning preserved
+    assert_eq!(
+        loaded.skills.get("tidy").unwrap().registry.as_deref(),
+        Some("runes")
+    );
+    assert!(loaded.skills.get("voice").unwrap().registry.is_none());
+    assert_eq!(
+        loaded.agents.get("researcher").unwrap().registry.as_deref(),
+        Some("runes")
+    );
+    assert!(loaded.rules.get("no-emdash").unwrap().registry.is_none());
+}
+
+#[test]
+fn manifest_find_type() {
+    use rune::manifest::ArtifactType;
+
+    let mut manifest = rune::manifest::Manifest::default();
+    manifest.skills.insert(
+        "tidy".to_string(),
+        rune::manifest::SkillEntry { registry: None },
+    );
+    manifest.agents.insert(
+        "researcher".to_string(),
+        rune::manifest::SkillEntry { registry: None },
+    );
+    manifest.rules.insert(
+        "no-emdash".to_string(),
+        rune::manifest::SkillEntry { registry: None },
+    );
+
+    assert_eq!(manifest.find_type("tidy"), Some(ArtifactType::Skill));
+    assert_eq!(manifest.find_type("researcher"), Some(ArtifactType::Agent));
+    assert_eq!(manifest.find_type("no-emdash"), Some(ArtifactType::Rule));
+    assert_eq!(manifest.find_type("nonexistent"), None);
+}
+
+#[test]
+fn manifest_section_accessors() {
+    use rune::manifest::ArtifactType;
+
+    let mut manifest = rune::manifest::Manifest::default();
+    manifest.section_mut(ArtifactType::Skill).insert(
+        "tidy".to_string(),
+        rune::manifest::SkillEntry { registry: None },
+    );
+    manifest.section_mut(ArtifactType::Agent).insert(
+        "researcher".to_string(),
+        rune::manifest::SkillEntry { registry: None },
+    );
+
+    assert_eq!(manifest.section(ArtifactType::Skill).len(), 1);
+    assert_eq!(manifest.section(ArtifactType::Agent).len(), 1);
+    assert_eq!(manifest.section(ArtifactType::Rule).len(), 0);
+}
+
+#[test]
+fn manifest_backward_compat_skills_only() {
+    // A manifest with only [skills] should parse correctly
+    let tmp = tempfile::tempdir().unwrap();
+    let project = tmp.path();
+    fs::create_dir_all(project.join(".claude")).unwrap();
+
+    let content = "[skills]\ntidy = \"runes\"\nvoice = {}\n";
+    fs::write(project.join(".claude").join("rune.toml"), content).unwrap();
+
+    let loaded = rune::manifest::Manifest::load(project).unwrap();
+    assert_eq!(loaded.skills.len(), 2);
+    assert!(loaded.agents.is_empty());
+    assert!(loaded.rules.is_empty());
+}
+
+#[test]
+fn manifest_artifact_dir_default() {
+    use rune::manifest::ArtifactType;
+
+    let manifest = rune::manifest::Manifest::default();
+    let project = std::path::Path::new("/tmp/test-project");
+
+    assert_eq!(
+        manifest.artifact_dir(project, ArtifactType::Skill),
+        project.join(".claude/skills")
+    );
+    assert_eq!(
+        manifest.artifact_dir(project, ArtifactType::Agent),
+        project.join(".claude/agents")
+    );
+    assert_eq!(
+        manifest.artifact_dir(project, ArtifactType::Rule),
+        project.join(".claude/rules")
+    );
+}
+
+#[test]
+fn manifest_artifact_dir_with_paths_override() {
+    use rune::manifest::ArtifactType;
+    use std::collections::BTreeMap;
+
+    let mut paths = BTreeMap::new();
+    paths.insert("agents".to_string(), ".cursor/agents".to_string());
+
+    let manifest = rune::manifest::Manifest {
+        paths: Some(paths),
+        ..Default::default()
+    };
+    let project = std::path::Path::new("/tmp/test-project");
+
+    // agents should use the override
+    assert_eq!(
+        manifest.artifact_dir(project, ArtifactType::Agent),
+        project.join(".cursor/agents")
+    );
+    // skills should use the default (no override)
+    assert_eq!(
+        manifest.artifact_dir(project, ArtifactType::Skill),
+        project.join(".claude/skills")
+    );
+}
+
+// ============================================================
+// Multi-type lockfile tests
+// ============================================================
+
+#[test]
+fn multi_type_lockfile_roundtrip() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = tmp.path();
+    fs::create_dir_all(project.join(".claude")).unwrap();
+
+    let mut lf = rune::lockfile::Lockfile::default();
+
+    lf.skills.insert(
+        "tidy".to_string(),
+        rune::lockfile::LockedSkill {
+            registry: "runes".to_string(),
+            hash: "abc123".to_string(),
+            registry_commit: Some("def456".to_string()),
+            synced_at: "2026-04-09".to_string(),
+        },
+    );
+
+    lf.agents.insert(
+        "researcher".to_string(),
+        rune::lockfile::LockedSkill {
+            registry: "runes".to_string(),
+            hash: "ghi789".to_string(),
+            registry_commit: None,
+            synced_at: "2026-04-09".to_string(),
+        },
+    );
+
+    lf.rules.insert(
+        "no-emdash".to_string(),
+        rune::lockfile::LockedSkill {
+            registry: "runes".to_string(),
+            hash: "jkl012".to_string(),
+            registry_commit: None,
+            synced_at: "2026-04-09".to_string(),
+        },
+    );
+
+    lf.save(project).unwrap();
+
+    let loaded = rune::lockfile::Lockfile::load(project).unwrap();
+    assert_eq!(loaded.skills.len(), 1);
+    assert_eq!(loaded.agents.len(), 1);
+    assert_eq!(loaded.rules.len(), 1);
+    assert_eq!(loaded.total_count(), 3);
+
+    let tidy = loaded.skills.get("tidy").unwrap();
+    assert_eq!(tidy.registry, "runes");
+    assert_eq!(tidy.hash, "abc123");
+
+    let researcher = loaded.agents.get("researcher").unwrap();
+    assert_eq!(researcher.hash, "ghi789");
+
+    let rule = loaded.rules.get("no-emdash").unwrap();
+    assert_eq!(rule.hash, "jkl012");
+}
+
+#[test]
+fn lockfile_backward_compat_skills_only() {
+    // A lockfile with only [skills] should parse correctly
+    let tmp = tempfile::tempdir().unwrap();
+    let project = tmp.path();
+    fs::create_dir_all(project.join(".claude")).unwrap();
+
+    let content = "# Generated by rune sync\n\n[skills.tidy]\nregistry = \"runes\"\nhash = \"abc\"\nsynced_at = \"2026-04-09\"\n";
+    fs::write(project.join(".claude").join("rune.lock"), content).unwrap();
+
+    let loaded = rune::lockfile::Lockfile::load(project).unwrap();
+    assert_eq!(loaded.skills.len(), 1);
+    assert!(loaded.agents.is_empty());
+    assert!(loaded.rules.is_empty());
+}
+
+#[test]
+fn lockfile_section_accessors() {
+    use rune::manifest::ArtifactType;
+
+    let mut lf = rune::lockfile::Lockfile::default();
+    lf.section_mut(ArtifactType::Agent).insert(
+        "researcher".to_string(),
+        rune::lockfile::LockedSkill {
+            registry: "runes".to_string(),
+            hash: "abc".to_string(),
+            registry_commit: None,
+            synced_at: "2026-04-09".to_string(),
+        },
+    );
+
+    assert_eq!(lf.section(ArtifactType::Agent).len(), 1);
+    assert_eq!(lf.section(ArtifactType::Skill).len(), 0);
+    assert_eq!(lf.section(ArtifactType::Rule).len(), 0);
+}
+
+// ============================================================
+// Typed registry tests
+// ============================================================
+
+#[test]
+fn list_artifacts_typed_registry() {
+    use rune::manifest::ArtifactType;
+
+    let tmp = tempfile::tempdir().unwrap();
+    let base = tmp.path();
+
+    // Create typed subdirectories
+    let skills_dir = base.join("skills");
+    let agents_dir = base.join("agents");
+    fs::create_dir_all(&skills_dir).unwrap();
+    fs::create_dir_all(&agents_dir).unwrap();
+
+    // Skill as directory with SKILL.md
+    fs::create_dir_all(skills_dir.join("tidy")).unwrap();
+    fs::write(
+        skills_dir.join("tidy").join("SKILL.md"),
+        "---\nname: tidy\n---\n",
+    )
+    .unwrap();
+
+    // Skill as flat file
+    fs::write(skills_dir.join("voice.md"), "---\nname: voice\n---\n").unwrap();
+
+    // Agent as flat file
+    fs::write(
+        agents_dir.join("researcher.md"),
+        "---\nname: researcher\n---\n",
+    )
+    .unwrap();
+
+    let reg = rune::config::Registry {
+        name: "test".to_string(),
+        url: "unused".to_string(),
+        path: None,
+        branch: "main".to_string(),
+        readonly: false,
+        source: "git".to_string(),
+        token_env: None,
+        git_email: None,
+        git_name: None,
+    };
+
+    let skills = rune::registry::list_artifacts(base, &reg, ArtifactType::Skill).unwrap();
+    assert_eq!(skills, vec!["tidy", "voice"]);
+
+    let agents = rune::registry::list_artifacts(base, &reg, ArtifactType::Agent).unwrap();
+    assert_eq!(agents, vec!["researcher"]);
+
+    let rules = rune::registry::list_artifacts(base, &reg, ArtifactType::Rule).unwrap();
+    assert!(rules.is_empty());
+}
+
+#[test]
+fn list_artifacts_legacy_fallback() {
+    use rune::manifest::ArtifactType;
+
+    let tmp = tempfile::tempdir().unwrap();
+    let base = tmp.path();
+
+    // No skills/ subdir -- skills at root (legacy format)
+    fs::create_dir_all(base.join("tidy")).unwrap();
+    fs::write(base.join("tidy").join("SKILL.md"), "---\nname: tidy\n---\n").unwrap();
+    fs::write(base.join("voice.md"), "---\nname: voice\n---\n").unwrap();
+
+    let reg = rune::config::Registry {
+        name: "test".to_string(),
+        url: "unused".to_string(),
+        path: None,
+        branch: "main".to_string(),
+        readonly: false,
+        source: "git".to_string(),
+        token_env: None,
+        git_email: None,
+        git_name: None,
+    };
+
+    // Skills should be found via legacy fallback (root)
+    let skills = rune::registry::list_artifacts(base, &reg, ArtifactType::Skill).unwrap();
+    assert!(skills.contains(&"tidy".to_string()));
+    assert!(skills.contains(&"voice".to_string()));
+}
+
+#[test]
+fn artifact_path_typed_vs_legacy() {
+    use rune::manifest::ArtifactType;
+
+    let tmp = tempfile::tempdir().unwrap();
+    let base = tmp.path();
+
+    let reg = rune::config::Registry {
+        name: "test".to_string(),
+        url: "unused".to_string(),
+        path: None,
+        branch: "main".to_string(),
+        readonly: false,
+        source: "git".to_string(),
+        token_env: None,
+        git_email: None,
+        git_name: None,
+    };
+
+    // With typed subdir: agents/
+    fs::create_dir_all(base.join("agents")).unwrap();
+    fs::write(base.join("agents").join("researcher.md"), "content").unwrap();
+
+    let agent_path = rune::registry::artifact_path(base, &reg, "researcher", ArtifactType::Agent);
+    assert_eq!(agent_path, base.join("agents").join("researcher.md"));
+
+    // Without typed subdir: skills fall back to root
+    // (no skills/ subdir exists, so falls back to base)
+    let skill_path = rune::registry::artifact_path(base, &reg, "tidy", ArtifactType::Skill);
+    // Should look at root since no skills/ subdir
+    assert_eq!(skill_path, base.join("tidy.md"));
+
+    // With typed subdir: skills/
+    fs::create_dir_all(base.join("skills")).unwrap();
+    let skill_path_typed = rune::registry::artifact_path(base, &reg, "tidy", ArtifactType::Skill);
+    // Now should prefer the typed subdir
+    assert_eq!(skill_path_typed, base.join("skills").join("tidy.md"));
+}
+
+#[test]
+fn artifact_type_parse() {
+    use rune::manifest::ArtifactType;
+
+    assert_eq!(ArtifactType::parse("skill"), Some(ArtifactType::Skill));
+    assert_eq!(ArtifactType::parse("skills"), Some(ArtifactType::Skill));
+    assert_eq!(ArtifactType::parse("agent"), Some(ArtifactType::Agent));
+    assert_eq!(ArtifactType::parse("agents"), Some(ArtifactType::Agent));
+    assert_eq!(ArtifactType::parse("rule"), Some(ArtifactType::Rule));
+    assert_eq!(ArtifactType::parse("rules"), Some(ArtifactType::Rule));
+    assert_eq!(ArtifactType::parse("SKILL"), Some(ArtifactType::Skill));
+    assert_eq!(ArtifactType::parse("unknown"), None);
+    assert_eq!(ArtifactType::parse("command"), None);
+}
+
+#[test]
+fn artifact_type_properties() {
+    use rune::manifest::ArtifactType;
+
+    assert_eq!(ArtifactType::Skill.section(), "skills");
+    assert_eq!(ArtifactType::Agent.section(), "agents");
+    assert_eq!(ArtifactType::Rule.section(), "rules");
+
+    assert_eq!(ArtifactType::Skill.default_dir(), ".claude/skills");
+    assert_eq!(ArtifactType::Agent.default_dir(), ".claude/agents");
+    assert_eq!(ArtifactType::Rule.default_dir(), ".claude/rules");
+
+    assert!(ArtifactType::Skill.is_directory_type());
+    assert!(!ArtifactType::Agent.is_directory_type());
+    assert!(!ArtifactType::Rule.is_directory_type());
+
+    assert_eq!(ArtifactType::Skill.singular(), "skill");
+    assert_eq!(ArtifactType::Agent.singular(), "agent");
+    assert_eq!(ArtifactType::Rule.singular(), "rule");
+}
+
+#[test]
+fn validate_name_works() {
+    // validate_name is the new generic version
+    assert!(rune::registry::validate_name("tidy").is_ok());
+    assert!(rune::registry::validate_name("my-agent").is_ok());
+    assert!(rune::registry::validate_name("no-emdash").is_ok());
+
+    // Same validation rules as validate_skill_name
+    assert!(rune::registry::validate_name("../escape").is_err());
+    assert!(rune::registry::validate_name(".hidden").is_err());
+    assert!(rune::registry::validate_name("").is_err());
+    assert!(rune::registry::validate_name("-flag").is_err());
+
+    // Alias still works
+    assert!(rune::registry::validate_skill_name("tidy").is_ok());
+    assert!(rune::registry::validate_skill_name("../escape").is_err());
 }

@@ -6,20 +6,34 @@
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![built with GitLab](https://img.shields.io/badge/built_with-GitLab-FC6D26?logo=gitlab)](https://gitlab.com/nomograph/rune)
 
-Skill registry manager for AI coding agents. Syncs markdown skill files
-from git-based registries into `.claude/skills/`.
+Registry manager for AI coding agent skills, agents, and rules. Syncs
+markdown files from git-based registries into `.claude/skills/`,
+`.claude/agents/`, and `.claude/rules/`.
 
 ## What this is
 
-Skills are inscribed knowledge -- reusable instructions that teach AI
-agents how to perform specific workflows. rune keeps them current across
-projects via git-based registries.
+rune manages three types of items for AI coding agents:
+
+- **Skills** -- reusable instructions that teach agents how to perform
+  specific workflows. Stored in `.claude/skills/` as directories (with
+  `SKILL.md`) or single `.md` files.
+- **Agents** -- subagent definitions that delegate specialized tasks.
+  Stored in `.claude/agents/` as `.md` files. (Anthropic's docs call
+  these "subagents"; the directory is `.claude/agents/`, so rune uses
+  "agents" to match the filesystem.)
+- **Rules** -- conditional instructions that apply in specific contexts.
+  Stored in `.claude/rules/` as `.md` files.
+
+> Note: `.claude/commands/` was merged into skills by Anthropic in
+> Claude Code v2.1.3. rune does not manage commands as a separate type.
+
+rune keeps all three types current across projects via git-based registries.
 
 - **Bidirectional sync** -- pull updates from registries, push changes back
 - **Multi-registry** -- public and private registries with separate auth
 - **Upstream tracking** -- import from third-party registries, track drift
 - **Lockfile** -- reproducible syncs with content-hash drift detection
-- **LLM-native** -- self-installs a Claude Code hook that detects skill drift
+- **LLM-native** -- self-installs a Claude Code hook that detects drift
 
 ## Install
 
@@ -30,20 +44,22 @@ the mise config block with current version and URLs.
 ## Quick start
 
 ```bash
-rune setup                  # one-time: create config, install Claude Code hook
-rune init                   # per-project: create .claude/rune.toml manifest
-rune add tidy --from runes  # add a skill from a registry
-rune sync                   # pull latest from registries
-rune check                  # show drift between local and registries
-rune push tidy              # push local changes back to registry
-rune status                 # combined summary view
-rune audit                  # check for content regressions
+rune setup                         # one-time: create config, install hook
+rune init                          # per-project: create .claude/rune.toml
+rune add tidy --from runes         # add a skill from a registry
+rune add researcher -t agent       # add an agent
+rune add no-emdash -t rule         # add a rule
+rune sync                          # pull latest from registries
+rune check                         # show drift between local and registries
+rune push tidy                     # push local changes back to registry
+rune status                        # combined summary view
+rune audit                         # check for content regressions
 ```
 
 ## Registries
 
-Registries are git repos containing skill directories. Configure them
-in `~/.config/rune/config.toml`:
+Registries are git repos containing typed subdirectories. Configure
+them in `~/.config/rune/config.toml`:
 
 ```toml
 # Public registry -- anyone can clone
@@ -54,9 +70,57 @@ url = "https://gitlab.com/nomograph/runes.git"
 # Private registry -- requires authentication
 [[registry]]
 name = "private"
-url = "https://gitlab.com/work-namespace/private-skills.git"
+url = "https://gitlab.com/work-namespace/private-registry.git"
 token_env = "RUNE_TOKEN_PRIVATE"
 ```
+
+### Registry layout
+
+A typed registry uses subdirectories for each item type:
+
+```
+my-registry/
+  skills/
+    tidy/
+      SKILL.md
+    voice.md
+  agents/
+    researcher.md
+    reviewer.md
+  rules/
+    no-emdash.md
+    commit-style.md
+```
+
+Legacy registries with skills at the root (no `skills/` subdirectory)
+are still supported via automatic fallback.
+
+### Teams
+
+Use multiple registries to share items across teams:
+
+```toml
+# Team-wide skills and agents
+[[registry]]
+name = "team"
+url = "https://gitlab.com/my-team/runes.git"
+token_env = "RUNE_TOKEN_TEAM"
+
+# Personal customizations
+[[registry]]
+name = "personal"
+url = "https://gitlab.com/me/runes.git"
+
+# Public upstream (read-only)
+[[registry]]
+name = "k-dense"
+url = "https://github.com/K-Dense-AI/claude-scientific-skills.git"
+readonly = true
+source = "archive"
+```
+
+Registries are searched in declaration order. The first registry
+containing an item wins (unless pinned in the manifest).
 
 ### Authentication
 
@@ -111,20 +175,48 @@ token_env = "RUNE_TOKEN_WORK"
 
 ## Per-project manifest
 
-Each project declares which skills it needs in `.claude/rune.toml`:
+Each project declares what it needs in `.claude/rune.toml`:
 
 ```toml
 [skills]
 tidy = "runes"            # pinned to specific registry
 research = {}             # resolved by registry priority
 voice = "private"         # from private registry
+
+[agents]
+researcher = "runes"
+reviewer = {}
+
+[rules]
+no-emdash = "runes"
+```
+
+Existing manifests with only `[skills]` continue to work unchanged.
+The `[agents]` and `[rules]` sections are optional and omitted from
+the file when empty.
+
+### Path overrides
+
+By default, rune installs items into `.claude/skills/`, `.claude/agents/`,
+and `.claude/rules/`. Override these with a `[paths]` section to target
+different tools:
+
+```toml
+[paths]
+agents = ".cursor/agents"
+
+[skills]
+tidy = "runes"
+
+[agents]
+researcher = "runes"
 ```
 
 After `rune sync`, a lockfile (`.claude/rune.lock`) records exactly
 what was installed -- content hash, registry commit, and sync date.
 This enables accurate drift detection:
 
-- **Local newer** -- you edited the skill since last sync
+- **Local newer** -- you edited the item since last sync
 - **Registry newer** -- upstream changed since last sync
 - **Diverged** -- both changed
 
@@ -133,7 +225,8 @@ This enables accurate drift detection:
 Browse and import skills from third-party registries:
 
 ```bash
-rune browse k-dense                 # list available skills
+rune browse k-dense                 # list available items
+rune browse k-dense -t skill        # list only skills
 rune import scanpy@k-dense          # import into your own registry
 rune upstream                       # check for upstream updates
 rune diff scanpy                    # compare local vs upstream
@@ -143,16 +236,20 @@ rune update scanpy                  # pull upstream changes
 Imported skills carry pedigree metadata tracking origin, upstream
 commit, and whether you've modified them locally.
 
+> import, upstream, diff, and update operate on skills only. They use
+> pedigree metadata which is a skill-specific concept.
+
 ## Drift detection
 
 ![drift detection](drift.svg)
 
-rune installs a Claude Code PostToolUse hook that fires when a skill
-file is modified. The hook runs `rune check` and surfaces drift to
-Claude as context, prompting you to push or revert.
+rune installs a Claude Code PostToolUse hook that fires when a file
+in `.claude/skills/`, `.claude/agents/`, or `.claude/rules/` is
+modified. The hook runs `rune check` and surfaces drift to Claude as
+context, prompting you to push or revert.
 
 If you use [muxr](https://gitlab.com/nomograph/muxr) for session
-management, add `rune sync` as a `pre_create` hook so skills are
+management, add `rune sync` as a `pre_create` hook so items are
 pulled before each session starts.
 
 ## Commands
@@ -161,22 +258,30 @@ pulled before each session starts.
 |---------|-------------|
 | `rune setup` | One-time: create config, install Claude Code hook |
 | `rune init` | Per-project: create .claude/rune.toml manifest |
-| `rune add <skill>` | Add a skill from a registry |
-| `rune remove <skill>` | Remove a skill from the project |
+| `rune add <name...> [--all] [--from <reg>] [-t type]` | Add one or more items (or `--all` from a registry) |
+| `rune remove <name> [-t type]` | Remove an item (type auto-detected if omitted) |
+| `rune prune` | Remove manifest entries whose registry is not configured |
 | `rune sync [--force]` | Pull latest from registries (--force overwrites local edits) |
 | `rune check` | Show drift between local and registries |
-| `rune push <skill> [-m msg]` | Push local changes back to registry |
-| `rune ls` | List skills and their status |
+| `rune push <name> [-t type]` | Push local changes back to registry |
+| `rune ls` | List all items and their status |
+| `rune ls --registry <name>` | List items available in a registry |
 | `rune status` | Combined summary: registries + project + upstream |
 | `rune audit` | Check for content regressions across registries |
-| `rune browse <registry>` | List available skills in a registry |
-| `rune import <skill>@<registry>` | Import from upstream into your registry |
+| `rune browse <registry> [-t type]` | Browse items in a registry |
+| `rune import <skill>@<registry>` | Import skill from upstream (skills only) |
 | `rune upstream` | Check imported skills for upstream updates |
 | `rune diff <skill>` | Diff imported skill against upstream |
 | `rune update <skill>` | Pull upstream changes for an imported skill |
 | `rune clean` | Remove stale cache entries |
 | `rune doctor` | Diagnose configuration and registry health |
 | `rune completions <shell>` | Generate shell completions (zsh, bash, fish) |
+
+### Type flag
+
+The `-t` / `--type` flag accepts `skill`, `agent`, or `rule`. For
+`add`, it defaults to `skill`. For `remove` and `push`, the type is
+auto-detected from the manifest when omitted.
 
 ### Global flags
 

@@ -1,37 +1,48 @@
 use anyhow::{Context, Result};
 use std::path::Path;
 
-use super::{SkillStatus, check::check_skill};
+use super::{SkillStatus, check::check_item};
 use crate::color;
 use crate::config::Config;
 use crate::lockfile::Lockfile;
-use crate::manifest::Manifest;
+use crate::manifest::{ALL_TYPES, Manifest};
 use crate::pedigree::{self, Pedigree};
 use crate::registry;
 
-/// List all skills and their status.
+/// List all items and their status.
 pub fn ls(project_dir: &Path) -> Result<()> {
     let config = Config::load()?;
     let manifest = Manifest::load(project_dir)?;
     let lockfile = Lockfile::load(project_dir).unwrap_or_default();
 
-    if manifest.skills.is_empty() {
-        eprintln!("No skills in manifest. Run `rune add <skill>`.");
+    if manifest.total_count() == 0 {
+        eprintln!("No items in manifest. Run `rune add <name>`.");
         return Ok(());
     }
 
-    for (skill_name, entry) in &manifest.skills {
-        if let Err(e) = registry::validate_skill_name(skill_name) {
-            eprintln!("  {skill_name}: {e}");
+    for at in ALL_TYPES {
+        let section = manifest.section(at);
+        if section.is_empty() {
             continue;
         }
-        match check_skill(skill_name, entry, &config, project_dir, &lockfile) {
-            Ok((name, reg, status)) => {
-                println!("  {name:<24} {:<30} registry: {}",
-                    status.colored(), color::cyan(&reg));
+
+        eprintln!("{}", color::bold(at.section()));
+        for (name, entry) in section {
+            if let Err(e) = registry::validate_name(name) {
+                eprintln!("  {name}: {e}");
+                continue;
             }
-            Err(e) => {
-                println!("  {skill_name:<24} {}", color::red(&format!("ERROR: {e}")));
+            match check_item(name, entry, &config, project_dir, &lockfile, at) {
+                Ok((item_name, reg, status)) => {
+                    println!(
+                        "  {item_name:<24} {:<30} registry: {}",
+                        status.colored(),
+                        color::cyan(&reg)
+                    );
+                }
+                Err(e) => {
+                    println!("  {name:<24} {}", color::red(&format!("ERROR: {e}")));
+                }
             }
         }
     }
@@ -39,7 +50,7 @@ pub fn ls(project_dir: &Path) -> Result<()> {
     Ok(())
 }
 
-/// List all available skills in a specific registry.
+/// List all available items in a specific registry.
 pub fn ls_registry(registry_name: &str) -> Result<()> {
     let config = Config::load()?;
     let reg = config
@@ -47,18 +58,35 @@ pub fn ls_registry(registry_name: &str) -> Result<()> {
         .with_context(|| format!("Unknown registry: {registry_name}"))?;
 
     let repo_dir = registry::ensure_registry(reg)?;
-    let skills = registry::list_skills(&repo_dir, reg)?;
 
-    if skills.is_empty() {
-        eprintln!("No skills in registry {}", color::cyan(registry_name));
+    let ro = if reg.readonly {
+        color::dim(" (read-only)")
     } else {
-        let ro = if reg.readonly { color::dim(" (read-only)") } else { String::new() };
-        eprintln!("{}{ro}:", color::cyan(registry_name));
-        for skill in &skills {
-            let path = registry::skill_path(&repo_dir, reg, skill);
-            let kind = if path.is_dir() { "dir " } else { "file" };
-            println!("  {skill:<24} {}", color::dim(kind));
+        String::new()
+    };
+
+    let mut total = 0;
+    for at in ALL_TYPES {
+        let items = registry::list_artifacts(&repo_dir, reg, at)?;
+        if items.is_empty() {
+            continue;
         }
+        total += items.len();
+
+        eprintln!("{}{ro} -- {}:", color::cyan(registry_name), at.section());
+        for item in &items {
+            if at.is_directory_type() {
+                let path = registry::artifact_path(&repo_dir, reg, item, at);
+                let kind = if path.is_dir() { "dir " } else { "file" };
+                println!("  {item:<24} {}", color::dim(kind));
+            } else {
+                println!("  {item:<24} {}", color::dim("file"));
+            }
+        }
+    }
+
+    if total == 0 {
+        eprintln!("No items in registry {}", color::cyan(registry_name));
     }
 
     Ok(())
@@ -73,7 +101,11 @@ pub fn doctor(project_dir: &Path) -> Result<()> {
     if config_path.exists() {
         eprintln!("  config: {} {}", config_path.display(), color::green("ok"));
     } else {
-        eprintln!("  config: {} {}", config_path.display(), color::red("MISSING"));
+        eprintln!(
+            "  config: {} {}",
+            config_path.display(),
+            color::red("MISSING")
+        );
         eprintln!("  run: rune setup");
         return Ok(());
     }
@@ -84,20 +116,35 @@ pub fn doctor(project_dir: &Path) -> Result<()> {
     let mut names = std::collections::HashSet::new();
     for reg in &config.registry {
         if !names.insert(&reg.name) {
-            eprintln!("  registry {}: {}", color::cyan(&reg.name), color::red("DUPLICATE NAME"));
+            eprintln!(
+                "  registry {}: {}",
+                color::cyan(&reg.name),
+                color::red("DUPLICATE NAME")
+            );
             continue;
         }
         if reg.url.is_empty() {
-            eprintln!("  registry {}: {}", color::cyan(&reg.name), color::red("EMPTY URL"));
+            eprintln!(
+                "  registry {}: {}",
+                color::cyan(&reg.name),
+                color::red("EMPTY URL")
+            );
             continue;
         }
 
         let cache_dir = Config::cache_dir()?;
         let repo_dir = cache_dir.join(&reg.name);
-        let ro = if reg.readonly { color::dim(" (readonly)") } else { String::new() };
+        let ro = if reg.readonly {
+            color::dim(" (readonly)")
+        } else {
+            String::new()
+        };
         let src = color::dim(&format!(" [{}]", reg.source));
         let auth = if reg.token_env.is_some() {
-            color::dim(&format!(" (${} auth)", reg.token_env.as_deref().unwrap_or("?")))
+            color::dim(&format!(
+                " (${} auth)",
+                reg.token_env.as_deref().unwrap_or("?")
+            ))
         } else if reg.url.contains("gitlab.com") || reg.url.contains("github.com") {
             color::dim(" (cli auth)")
         } else {
@@ -110,11 +157,18 @@ pub fn doctor(project_dir: &Path) -> Result<()> {
 
         if repo_dir.exists() {
             let skills = registry::list_skills(&repo_dir, reg).unwrap_or_default();
-            eprintln!("  registry {}{ro}{src}{auth}{identity}: {} skills {}",
-                color::cyan(&reg.name), skills.len(), color::green("ok"));
+            eprintln!(
+                "  registry {}{ro}{src}{auth}{identity}: {} skills {}",
+                color::cyan(&reg.name),
+                skills.len(),
+                color::green("ok")
+            );
         } else {
-            eprintln!("  registry {}{ro}{src}{auth}{identity}: {}",
-                color::cyan(&reg.name), color::dim("not cached"));
+            eprintln!(
+                "  registry {}{ro}{src}{auth}{identity}: {}",
+                color::cyan(&reg.name),
+                color::dim("not cached")
+            );
         }
     }
 
@@ -141,9 +195,59 @@ pub fn doctor(project_dir: &Path) -> Result<()> {
     let lockfile_path = Lockfile::path(project_dir);
     if lockfile_path.exists() {
         let lf = Lockfile::load(project_dir).unwrap_or_default();
-        eprintln!("  lockfile: {} skills locked {}", lf.skills.len(), color::green("ok"));
+        eprintln!(
+            "  lockfile: {} entries locked {}",
+            lf.total_count(),
+            color::green("ok")
+        );
     } else {
-        eprintln!("  lockfile: {}", color::dim("none (run rune sync to create)"));
+        eprintln!(
+            "  lockfile: {}",
+            color::dim("none (run rune sync to create)")
+        );
+    }
+
+    // Manifest health: check for entries referencing unconfigured registries
+    let configured: std::collections::HashSet<String> =
+        config.registry.iter().map(|r| r.name.clone()).collect();
+    if let Some(manifest) = Manifest::try_load(project_dir) {
+        let mut stale: Vec<(String, String, &'static str)> = Vec::new();
+        for at in ALL_TYPES {
+            for (name, entry) in manifest.section(at) {
+                if let Some(reg) = entry.registry.as_deref()
+                    && !configured.contains(reg)
+                {
+                    stale.push((name.clone(), reg.to_string(), at.singular()));
+                }
+            }
+        }
+        if stale.is_empty() {
+            eprintln!(
+                "  manifest: {} entr{} {}",
+                manifest.total_count(),
+                if manifest.total_count() == 1 {
+                    "y"
+                } else {
+                    "ies"
+                },
+                color::green("ok")
+            );
+        } else {
+            eprintln!(
+                "  manifest: {} entr{} reference unconfigured registr{}:",
+                stale.len(),
+                if stale.len() == 1 { "y" } else { "ies" },
+                if stale.len() == 1 { "y" } else { "ies" }
+            );
+            for (name, reg, kind) in &stale {
+                eprintln!(
+                    "    {} ({kind}) (registry: {})",
+                    color::yellow(name),
+                    color::cyan(reg)
+                );
+            }
+            eprintln!("  run: rune prune  (remove stale entries)");
+        }
     }
 
     eprintln!();
@@ -161,11 +265,8 @@ pub fn clean() -> Result<()> {
         return Ok(());
     }
 
-    let configured: std::collections::HashSet<String> = config
-        .registry
-        .iter()
-        .map(|r| r.name.clone())
-        .collect();
+    let configured: std::collections::HashSet<String> =
+        config.registry.iter().map(|r| r.name.clone()).collect();
 
     let mut removed = 0;
     for entry in std::fs::read_dir(&cache_dir)? {
@@ -175,7 +276,8 @@ pub fn clean() -> Result<()> {
         // Skip lock/etag/header files -- they'll be cleaned with their registry
         if name.starts_with('.') {
             // Check if it's a stale metadata file for a removed registry
-            let base = name.trim_start_matches('.')
+            let base = name
+                .trim_start_matches('.')
                 .trim_end_matches(".lock")
                 .trim_end_matches(".etag")
                 .trim_end_matches("-headers.txt")
@@ -200,7 +302,11 @@ pub fn clean() -> Result<()> {
 
         if !configured.contains(&name) {
             if dry_run {
-                eprintln!("  {} {} (not in config)", color::yellow("would remove"), name);
+                eprintln!(
+                    "  {} {} (not in config)",
+                    color::yellow("would remove"),
+                    name
+                );
             } else {
                 let path = entry.path();
                 if path.is_dir() {
@@ -217,7 +323,10 @@ pub fn clean() -> Result<()> {
     if removed == 0 {
         eprintln!("Cache is clean. Nothing to remove.");
     } else if dry_run {
-        eprintln!("\n{} item(s) would be removed. Run without --dry-run to delete.", removed);
+        eprintln!(
+            "\n{} item(s) would be removed. Run without --dry-run to delete.",
+            removed
+        );
     } else {
         eprintln!("\nRemoved {} stale cache item(s).", removed);
     }
@@ -274,45 +383,64 @@ pub fn audit() -> Result<()> {
                         };
 
                         if pct < -20 {
-                            eprintln!("  {:<24} {:>4} lines  {} (upstream: {} lines, {pct:+}%)",
-                                skill_name, local_lines,
+                            eprintln!(
+                                "  {:<24} {:>4} lines  {} (upstream: {} lines, {pct:+}%)",
+                                skill_name,
+                                local_lines,
                                 color::red("REGRESSED"),
-                                upstream_lines);
+                                upstream_lines
+                            );
                             issues += 1;
                         } else if pct > 50 {
-                            eprintln!("  {:<24} {:>4} lines  {} (upstream: {} lines, {pct:+}%)",
-                                skill_name, local_lines,
+                            eprintln!(
+                                "  {:<24} {:>4} lines  {} (upstream: {} lines, {pct:+}%)",
+                                skill_name,
+                                local_lines,
                                 color::green("EXTENDED"),
-                                upstream_lines);
+                                upstream_lines
+                            );
                         } else {
                             let modified = if ped.modified == Some(true) {
                                 color::yellow(" (modified)")
                             } else {
                                 String::new()
                             };
-                            eprintln!("  {:<24} {:>4} lines  from {}{modified}",
-                                skill_name, local_lines,
-                                color::dim(origin));
+                            eprintln!(
+                                "  {:<24} {:>4} lines  from {}{modified}",
+                                skill_name,
+                                local_lines,
+                                color::dim(origin)
+                            );
                         }
                     } else {
-                        eprintln!("  {:<24} {:>4} lines  {} (not in upstream)",
-                            skill_name, local_lines,
-                            color::yellow("REMOVED UPSTREAM"));
+                        eprintln!(
+                            "  {:<24} {:>4} lines  {} (not in upstream)",
+                            skill_name,
+                            local_lines,
+                            color::yellow("REMOVED UPSTREAM")
+                        );
                     }
                 }
             } else {
-                eprintln!("  {:<24} {:>4} lines  from {} {}",
-                    skill_name, local_lines,
+                eprintln!(
+                    "  {:<24} {:>4} lines  from {} {}",
+                    skill_name,
+                    local_lines,
                     origin,
-                    color::dim("(registry not configured)"));
+                    color::dim("(registry not configured)")
+                );
             }
         }
         eprintln!();
     }
 
     if issues > 0 {
-        eprintln!("{}", color::red(
-            &format!("{issues} skill(s) may have lost content. Review with `rune diff <skill>`.")));
+        eprintln!(
+            "{}",
+            color::red(&format!(
+                "{issues} skill(s) may have lost content. Review with `rune diff <skill>`."
+            ))
+        );
         std::process::exit(1);
     } else {
         eprintln!("All skills look healthy.");
@@ -321,7 +449,7 @@ pub fn audit() -> Result<()> {
     Ok(())
 }
 
-/// Combined status view: registries + project skills + upstream updates.
+/// Combined status view: registries + project items + upstream updates.
 pub fn status(project_dir: &Path) -> Result<()> {
     let config = Config::load()?;
 
@@ -330,20 +458,30 @@ pub fn status(project_dir: &Path) -> Result<()> {
     for reg in &config.registry {
         let cache_dir = Config::cache_dir()?;
         let repo_dir = cache_dir.join(&reg.name);
-        let ro = if reg.readonly { color::dim(" (ro)") } else { String::new() };
+        let ro = if reg.readonly {
+            color::dim(" (ro)")
+        } else {
+            String::new()
+        };
         let src = color::dim(&format!(" [{}]", reg.source));
 
         if repo_dir.exists() {
             let skills = registry::list_skills(&repo_dir, reg).unwrap_or_default();
-            eprintln!("  {}{ro}{src}: {} skills",
-                color::cyan(&reg.name), skills.len());
+            eprintln!(
+                "  {}{ro}{src}: {} skills",
+                color::cyan(&reg.name),
+                skills.len()
+            );
         } else {
-            eprintln!("  {}{ro}{src}: {}",
-                color::cyan(&reg.name), color::dim("not cached"));
+            eprintln!(
+                "  {}{ro}{src}: {}",
+                color::cyan(&reg.name),
+                color::dim("not cached")
+            );
         }
     }
 
-    // Project skills
+    // Project items
     let manifest = match Manifest::try_load(project_dir) {
         Some(m) => m,
         None => {
@@ -357,35 +495,52 @@ pub fn status(project_dir: &Path) -> Result<()> {
     let mut drifted = 0u32;
     let mut missing = 0u32;
 
-    eprintln!("\n{} ({} skills)", color::bold("project"), manifest.skills.len());
-    for (skill_name, entry) in &manifest.skills {
-        if let Err(e) = registry::validate_skill_name(skill_name) {
-            eprintln!("  {skill_name}: {e}");
+    let total = manifest.total_count();
+    eprintln!("\n{} ({} items)", color::bold("project"), total);
+
+    for at in ALL_TYPES {
+        let section = manifest.section(at);
+        if section.is_empty() {
             continue;
         }
-        match check_skill(skill_name, entry, &config, project_dir, &lockfile) {
-            Ok((name, reg, status)) => {
-                match &status {
-                    SkillStatus::Current => current += 1,
-                    SkillStatus::Drifted { .. } => drifted += 1,
-                    _ => missing += 1,
-                }
-                println!("  {name:<24} {:<30} {}", status.colored(), color::dim(&reg));
+        for (name, entry) in section {
+            if let Err(e) = registry::validate_name(name) {
+                eprintln!("  {name}: {e}");
+                continue;
             }
-            Err(e) => {
-                missing += 1;
-                println!("  {skill_name:<24} {}", color::red(&format!("ERROR: {e}")));
+            match check_item(name, entry, &config, project_dir, &lockfile, at) {
+                Ok((item_name, reg, status)) => {
+                    match &status {
+                        SkillStatus::Current => current += 1,
+                        SkillStatus::Drifted { .. } => drifted += 1,
+                        _ => missing += 1,
+                    }
+                    println!(
+                        "  {item_name:<24} {:<30} {}",
+                        status.colored(),
+                        color::dim(&reg)
+                    );
+                }
+                Err(e) => {
+                    missing += 1;
+                    println!("  {name:<24} {}", color::red(&format!("ERROR: {e}")));
+                }
             }
         }
     }
 
-    let summary = format!("{} current, {} drifted, {} missing",
-        current, drifted, missing);
-    eprintln!("  {}", if drifted > 0 || missing > 0 {
-        color::yellow(&summary)
-    } else {
-        color::green(&summary)
-    });
+    let summary = format!(
+        "{} current, {} drifted, {} missing",
+        current, drifted, missing
+    );
+    eprintln!(
+        "  {}",
+        if drifted > 0 || missing > 0 {
+            color::yellow(&summary)
+        } else {
+            color::green(&summary)
+        }
+    );
 
     // Upstream updates (scan writable registries for imported skills)
     let mut updates = Vec::new();
@@ -424,8 +579,10 @@ pub fn status(project_dir: &Path) -> Result<()> {
     }
 
     if !updates.is_empty() {
-        eprintln!("\n{}", color::yellow(
-            &format!("{} upstream update(s) available", updates.len())));
+        eprintln!(
+            "\n{}",
+            color::yellow(&format!("{} upstream update(s) available", updates.len()))
+        );
         for (name, origin) in &updates {
             eprintln!("  {} from {}", name, color::dim(origin));
         }
