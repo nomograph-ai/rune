@@ -1,14 +1,15 @@
 # rune
 
-Skill registry manager for AI coding agents. Syncs markdown skill files
-from git-based registries into `.claude/skills/`. Tracks drift via
-content-hash lockfile and pedigree frontmatter.
+Registry manager for AI coding agent skills, agents, and rules. Syncs
+markdown files from git-based registries into `.claude/skills/`,
+`.claude/agents/`, and `.claude/rules/`. Tracks drift via content-hash
+lockfile and pedigree frontmatter.
 
 ## Build
 
 ```bash
 cargo build --release       # binary at target/release/rune
-cargo test --lib            # unit tests (11 in pedigree.rs)
+cargo test                  # 22 unit + 40 integration tests
 cargo clippy -- -D warnings # lint (also enforced at crate level)
 ```
 
@@ -19,51 +20,51 @@ advisories and license audit. `audit_allow_failure: false`.
 
 Lib + binary crate. `lib.rs` re-exports all modules for testing.
 
-| Module | Lines | Responsibility |
-|--------|-------|---------------|
-| `main.rs` | ~255 | CLI (clap derive), command dispatch |
-| `commands.rs` | ~1453 | All command implementations |
-| `registry.rs` | ~700 | Git/archive registry operations, hashing, file locking |
-| `pedigree.rs` | ~380 | YAML frontmatter parsing/writing, URL slug extraction |
-| `manifest.rs` | ~100 | Per-project rune.toml: skill declarations |
-| `config.rs` | ~130 | Global ~/.config/rune/config.toml: registry definitions |
-| `setup.rs` | ~200 | One-time setup: config creation, Claude Code hook install |
-| `lockfile.rs` | ~60 | Per-project rune.lock: content hashes for drift detection |
-| `color.rs` | ~60 | Terminal color support (ANSI, respects TTY) |
+| Module | Responsibility |
+|--------|---------------|
+| `main.rs` | CLI (clap derive), command dispatch, `--type` flag parsing |
+| `commands/mod.rs` | SkillStatus enum, resolve_registry helpers |
+| `commands/check.rs` | Drift checking for all three types |
+| `commands/sync.rs` | Sync engine, AGENTS.md generation, agent symlink |
+| `commands/crud.rs` | add, push, remove (type-aware) |
+| `commands/info.rs` | ls, status, doctor, clean, audit |
+| `commands/upstream.rs` | browse, import, upstream, diff, update (skill-only) |
+| `registry.rs` | Git/archive registry operations, hashing, file locking |
+| `pedigree.rs` | YAML frontmatter parsing/writing, URL slug extraction |
+| `manifest.rs` | ArtifactType enum, per-project rune.toml, path overrides |
+| `config.rs` | Global config, registry definitions, artifact resolution |
+| `setup.rs` | One-time setup: config creation, Claude Code hook install |
+| `lockfile.rs` | Per-project rune.lock: content hashes for drift detection |
+| `color.rs` | Terminal color support (ANSI, respects TTY) |
 
 ## Key types
 
-- `Manifest` -- per-project `.claude/rune.toml`. Declares which skills
-  this project uses, optionally pinned to a registry.
-- `Lockfile` -- per-project `.claude/rune.lock`. Records content hash,
-  registry commit, and sync timestamp per skill.
-- `Pedigree` -- YAML frontmatter metadata tracking origin, import date,
-  upstream commit, and modification status.
-- `Config` -- global `~/.config/rune/config.toml`. Registry definitions
-  with URL, branch, auth, and source mode (git/archive).
-- `Registry` -- a named registry: URL, branch, token_env, readonly flag,
-  git identity overrides.
-- `SkillStatus` -- drift check result: Current, Drifted (with direction),
-  Missing, Unregistered, RegistryMissing.
+- `ArtifactType` -- enum: Skill, Agent, Rule. Each has section name,
+  default directory, and display name. Agents use `.claude/agents/`
+  (Anthropic's directory name; their docs say "subagents").
+- `Manifest` -- per-project `.claude/rune.toml`. Sections: `[skills]`,
+  `[agents]`, `[rules]`, optional `[paths]` for overrides.
+- `Lockfile` -- per-project `.claude/rune.lock`. Matching sections.
+- `Pedigree` -- YAML frontmatter tracking origin, import date,
+  upstream commit, modification status. Skill-only concept.
+- `Config` -- global `~/.config/rune/config.toml`. Registry definitions.
+- `SkillStatus` -- drift check result: Current, Drifted, Missing, etc.
 
 ## Conventions
 
 - All errors use `anyhow::Result` with `.context()` or `bail!()`.
-  Errors should be prescriptive: "Run `rune setup` to create one."
 - `#![deny(warnings, clippy::all)]` enforced in both lib.rs and main.rs.
-- Skill names are validated against path traversal via `validate_skill_name()`.
+- Names validated against path traversal via `validate_name()`.
 - Registry pulls use file locking (`fs2`) for concurrent safety.
-- Registries are cached in `~/.cache/rune/registries/`.
-- Lockfile header says "Do not edit manually" (derived output).
-- Shell completions derived from clap via `clap_complete`.
+- Registries cached in `~/.cache/rune/registries/`.
+- import/upstream/diff/update are skill-only (use pedigree metadata).
 - Global state (offline, dry_run) via `AtomicBool` statics in registry.rs.
+- Types kept as `SkillEntry` and `LockedSkill` for serde backward compat.
 
 ## Testing
 
-Existing tests: 11 in `pedigree.rs` (frontmatter parsing, URL slugs,
-date formatting). Run with `cargo test --lib`.
+62 tests: 11 unit (pedigree), 11 duplicated in bin, 40 integration.
 
-Pure functions suitable for additional tests: `validate_skill_name`,
-`Manifest` serde roundtrip, `Lockfile` serde roundtrip,
-`SkillStatus::colored`/`Display`, `Config` deserialization,
-`parse_skill_ref`.
+Integration tests cover: manifest/lockfile roundtrips for all types,
+typed and legacy registry layouts, artifact path resolution, find_type
+collision warnings, path overrides, and all original skill-focused tests.

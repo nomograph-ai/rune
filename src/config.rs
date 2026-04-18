@@ -89,14 +89,30 @@ impl Config {
 
     /// Resolve which registry has a skill, checking in declaration order.
     /// Returns the first registry that contains the skill.
-    pub fn resolve_skill(&self, skill_name: &str, cache_dir: &std::path::Path) -> Option<&Registry> {
+    #[allow(dead_code)]
+    pub fn resolve_skill(
+        &self,
+        skill_name: &str,
+        cache_dir: &std::path::Path,
+    ) -> Option<&Registry> {
+        self.resolve_artifact(skill_name, cache_dir, crate::manifest::ArtifactType::Skill)
+    }
+
+    /// Resolve which registry has an item of the given type.
+    /// Checks registries in declaration order, returns the first match.
+    pub fn resolve_artifact(
+        &self,
+        name: &str,
+        cache_dir: &std::path::Path,
+        artifact_type: crate::manifest::ArtifactType,
+    ) -> Option<&Registry> {
         for reg in &self.registry {
             let repo_dir = cache_dir.join(&reg.name);
             if !repo_dir.exists() {
                 continue;
             }
-            let skill_path = crate::registry::skill_path(&repo_dir, reg, skill_name);
-            if skill_path.exists() {
+            let path = crate::registry::artifact_path(&repo_dir, reg, name, artifact_type);
+            if path.exists() {
                 return Some(reg);
             }
         }
@@ -108,8 +124,7 @@ impl Config {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        let content = toml::to_string_pretty(self)
-            .context("Failed to serialize config")?;
+        let content = toml::to_string_pretty(self).context("Failed to serialize config")?;
         std::fs::write(&path, content)
             .with_context(|| format!("Failed to write {}", path.display()))?;
         Ok(())

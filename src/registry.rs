@@ -5,21 +5,28 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use crate::config::{Config, Registry};
+use crate::manifest::ArtifactType;
 
 /// Validate a skill name contains only safe characters.
 /// Prevents path traversal attacks via names like `../../etc/passwd`.
 pub fn validate_skill_name(name: &str) -> Result<()> {
+    validate_name(name)
+}
+
+/// Validate an item name contains only safe characters.
+/// Prevents path traversal attacks via names like `../../etc/passwd`.
+pub fn validate_name(name: &str) -> Result<()> {
     if name.is_empty() {
-        anyhow::bail!("Skill name cannot be empty");
+        anyhow::bail!("Name cannot be empty");
     }
     if name != name.trim() || name.contains(char::is_whitespace) {
-        anyhow::bail!("Invalid skill name: {name:?} (must not contain whitespace)");
+        anyhow::bail!("Invalid name: {name:?} (must not contain whitespace)");
     }
     if name.contains('/') || name.contains('\\') || name.contains("..") || name.contains('\0') {
-        anyhow::bail!("Invalid skill name: {name} (must not contain /, \\, .., or null bytes)");
+        anyhow::bail!("Invalid name: {name} (must not contain /, \\, .., or null bytes)");
     }
     if name.starts_with('.') || name.starts_with('-') {
-        anyhow::bail!("Invalid skill name: {name} (must not start with . or -)");
+        anyhow::bail!("Invalid name: {name} (must not start with . or -)");
     }
     Ok(())
 }
@@ -220,7 +227,11 @@ fn ensure_archive_registry(reg: &Registry, dest: &Path) -> Result<()> {
 
         // If we have a cached version, warn and continue
         if dest.exists() {
-            eprintln!("  warning: failed to refresh archive for {}: {}", reg.name, stderr.trim());
+            eprintln!(
+                "  warning: failed to refresh archive for {}: {}",
+                reg.name,
+                stderr.trim()
+            );
             eprintln!("  using cached version");
             return Ok(());
         }
@@ -242,7 +253,8 @@ fn ensure_archive_registry(reg: &Registry, dest: &Path) -> Result<()> {
 
     // Check if downloaded content matches what we have (content hash)
     if dest.exists()
-        && let (Ok(new_bytes), Some(old_hash)) = (std::fs::read(&tmp_tar), archive_content_hash(dest))
+        && let (Ok(new_bytes), Some(old_hash)) =
+            (std::fs::read(&tmp_tar), archive_content_hash(dest))
     {
         use sha2::{Digest, Sha256};
         let mut hasher = Sha256::new();
@@ -311,12 +323,12 @@ fn resolve_archive_url(url: &str, branch: &str) -> Result<String> {
     // GitLab: https://gitlab.com/group/project → /-/archive/branch/project-branch.tar.gz
     if url.contains("gitlab.com") {
         let project = url.rsplit('/').next().unwrap_or("repo");
-        return Ok(format!("{url}/-/archive/{branch}/{project}-{branch}.tar.gz"));
+        return Ok(format!(
+            "{url}/-/archive/{branch}/{project}-{branch}.tar.gz"
+        ));
     }
 
-    anyhow::bail!(
-        "Cannot determine archive URL for {url}. Use source = \"git\" instead."
-    )
+    anyhow::bail!("Cannot determine archive URL for {url}. Use source = \"git\" instead.")
 }
 
 // ── Git operations ──────────────────────────────────────────────────
@@ -349,7 +361,11 @@ fn git_output(args: &[&str], dir: &Path) -> Result<String> {
         .context("Failed to start git")?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!("git {} failed: {}", args.first().unwrap_or(&""), stderr.trim());
+        anyhow::bail!(
+            "git {} failed: {}",
+            args.first().unwrap_or(&""),
+            stderr.trim()
+        );
     }
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
@@ -438,7 +454,10 @@ fn git_command_auth(args: &[&str], dir: Option<&Path>, reg: &Registry) -> Result
         // We need a command that ignores its arg and prints the token.
         // Use a helper env var + a tiny script.
         cmd.env("RUNE_GIT_TOKEN", &token);
-        cmd.env("GIT_ASKPASS", create_askpass_path()?.to_string_lossy().to_string());
+        cmd.env(
+            "GIT_ASKPASS",
+            create_askpass_path()?.to_string_lossy().to_string(),
+        );
     }
 
     cmd.args(args);
@@ -476,29 +495,25 @@ fn create_askpass_path() -> Result<PathBuf> {
 /// Configure local git identity in a registry clone.
 /// Uses git_email/git_name from config, or auto-detects from glab/gh.
 fn configure_identity(repo_dir: &Path, reg: &Registry) -> Result<()> {
-    let email = reg.git_email.as_deref()
-        .map(|s| s.to_string())
-        .or_else(|| {
-            if reg.url.contains("gitlab.com") || reg.url.contains("gitlab.") {
-                cli_token("glab", &["api", "user", "--jq", ".email"])
-            } else if reg.url.contains("github.com") || reg.url.contains("github.") {
-                cli_token("gh", &["api", "user", "--jq", ".email"])
-            } else {
-                None
-            }
-        });
+    let email = reg.git_email.as_deref().map(|s| s.to_string()).or_else(|| {
+        if reg.url.contains("gitlab.com") || reg.url.contains("gitlab.") {
+            cli_token("glab", &["api", "user", "--jq", ".email"])
+        } else if reg.url.contains("github.com") || reg.url.contains("github.") {
+            cli_token("gh", &["api", "user", "--jq", ".email"])
+        } else {
+            None
+        }
+    });
 
-    let name = reg.git_name.as_deref()
-        .map(|s| s.to_string())
-        .or_else(|| {
-            if reg.url.contains("gitlab.com") || reg.url.contains("gitlab.") {
-                cli_token("glab", &["api", "user", "--jq", ".name"])
-            } else if reg.url.contains("github.com") || reg.url.contains("github.") {
-                cli_token("gh", &["api", "user", "--jq", ".name"])
-            } else {
-                None
-            }
-        });
+    let name = reg.git_name.as_deref().map(|s| s.to_string()).or_else(|| {
+        if reg.url.contains("gitlab.com") || reg.url.contains("gitlab.") {
+            cli_token("glab", &["api", "user", "--jq", ".name"])
+        } else if reg.url.contains("github.com") || reg.url.contains("github.") {
+            cli_token("gh", &["api", "user", "--jq", ".name"])
+        } else {
+            None
+        }
+    });
 
     if let Some(email) = &email {
         git_command(&["config", "user.email", email], Some(repo_dir))?;
@@ -532,18 +547,23 @@ fn clone(reg: &Registry, dest: &Path, branch: &str) -> Result<()> {
     // Clone with transient auth -- GIT_ASKPASS provides token, not persisted
     git_command_auth(
         &[
-            "clone", "--quiet", "--depth", "1", "--branch", branch,
-            "--single-branch", "--", &url, &dest_str,
+            "clone",
+            "--quiet",
+            "--depth",
+            "1",
+            "--branch",
+            branch,
+            "--single-branch",
+            "--",
+            &url,
+            &dest_str,
         ],
         None,
         reg,
     )?;
 
     // Scrub auth from persisted remote URL
-    git_command(
-        &["remote", "set-url", "origin", &reg.url],
-        Some(dest),
-    )?;
+    git_command(&["remote", "set-url", "origin", &reg.url], Some(dest))?;
 
     // Set identity for future commits
     configure_identity(dest, reg)?;
@@ -554,29 +574,28 @@ fn clone(reg: &Registry, dest: &Path, branch: &str) -> Result<()> {
 fn pull(repo_dir: &Path, reg: &Registry) -> Result<()> {
     // Set remote URL with oauth2@ username so GIT_ASKPASS triggers on fetch
     let url = clone_url(reg)?;
-    git_command(
-        &["remote", "set-url", "origin", &url],
-        Some(repo_dir),
-    )?;
+    git_command(&["remote", "set-url", "origin", &url], Some(repo_dir))?;
 
     // Fetch with transient auth
     git_command_auth(
-        &["fetch", "--quiet", "--depth", "1", "origin", "--", &reg.branch],
+        &[
+            "fetch",
+            "--quiet",
+            "--depth",
+            "1",
+            "origin",
+            "--",
+            &reg.branch,
+        ],
         Some(repo_dir),
         reg,
     )?;
 
     // Scrub auth from persisted remote URL
-    git_command(
-        &["remote", "set-url", "origin", &reg.url],
-        Some(repo_dir),
-    )?;
+    git_command(&["remote", "set-url", "origin", &reg.url], Some(repo_dir))?;
 
     let target = format!("origin/{}", reg.branch);
-    git_command(
-        &["reset", "--quiet", "--hard", &target],
-        Some(repo_dir),
-    )
+    git_command(&["reset", "--quiet", "--hard", &target], Some(repo_dir))
 }
 
 /// Get the last commit hash that modified a specific path in a repo.
@@ -592,7 +611,12 @@ pub fn skill_commit(repo_dir: &Path, skill_path_relative: &str) -> Option<String
 
 /// Commit and push changes to a registry via git CLI.
 /// Uses transient auth for push -- no PAT in remote URL.
-pub fn commit_and_push(repo_dir: &Path, skill_name: &str, reg: &Registry, message: Option<&str>) -> Result<()> {
+pub fn commit_and_push(
+    repo_dir: &Path,
+    skill_name: &str,
+    reg: &Registry,
+    message: Option<&str>,
+) -> Result<()> {
     // Use the actual skill path relative to repo_dir for git add.
     // This handles both directory skills (spectacle/) and file skills (spectacle.md).
     let skill_rel = skill_path(repo_dir, reg, skill_name);
@@ -614,10 +638,7 @@ pub fn commit_and_push(repo_dir: &Path, skill_name: &str, reg: &Registry, messag
     let default_msg = format!("update {skill_name}\n\nPushed by rune");
     let msg = message.unwrap_or(&default_msg);
 
-    git_command(
-        &["commit", "--quiet", "-m", msg],
-        Some(repo_dir),
-    )?;
+    git_command(&["commit", "--quiet", "-m", msg], Some(repo_dir))?;
 
     // Set remote URL with oauth2@ for push, then scrub after
     let url = clone_url(reg)?;
@@ -739,7 +760,11 @@ fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<()> {
 pub fn skill_hash(path: &Path) -> Option<String> {
     use sha2::{Digest, Sha256};
 
-    if path.symlink_metadata().map(|m| m.file_type().is_symlink()).unwrap_or(false) {
+    if path
+        .symlink_metadata()
+        .map(|m| m.file_type().is_symlink())
+        .unwrap_or(false)
+    {
         return None;
     }
 
@@ -842,4 +867,145 @@ pub fn list_skills(repo_dir: &Path, reg: &Registry) -> Result<Vec<String>> {
     skills.sort();
     skills.dedup();
     Ok(skills)
+}
+
+// ── Artifact-aware path operations ─────────────────────────────────
+
+/// Get the base directory for a type within a registry.
+/// Tries the typed subdirectory first (e.g. `skills/`, `agents/`, `rules/`).
+/// Falls back to the registry root for skills in legacy registries.
+pub fn artifact_base_in_registry(
+    repo_dir: &Path,
+    reg: &Registry,
+    artifact_type: ArtifactType,
+) -> PathBuf {
+    let base = match &reg.path {
+        Some(p) => {
+            let resolved = repo_dir.join(p);
+            if !resolved.starts_with(repo_dir) {
+                repo_dir.to_path_buf()
+            } else {
+                resolved
+            }
+        }
+        None => repo_dir.to_path_buf(),
+    };
+
+    // Try typed subdirectory first (e.g. skills/, agents/, rules/)
+    let typed_dir = base.join(artifact_type.section());
+    if typed_dir.is_dir() {
+        return typed_dir;
+    }
+
+    // For skills, fall back to root (legacy registries store skills at root)
+    if artifact_type == ArtifactType::Skill {
+        return base;
+    }
+
+    // For agents/rules, return the typed path even if it doesn't exist yet
+    typed_dir
+}
+
+/// Get the path to an item in a registry. Handles both typed subdirectory
+/// and legacy flat layouts.
+pub fn artifact_path(
+    repo_dir: &Path,
+    reg: &Registry,
+    name: &str,
+    artifact_type: ArtifactType,
+) -> PathBuf {
+    artifact_path_with_hint(repo_dir, reg, name, artifact_type, None)
+}
+
+/// Get the path to an item in a registry with a local format hint.
+pub fn artifact_path_with_hint(
+    repo_dir: &Path,
+    reg: &Registry,
+    name: &str,
+    artifact_type: ArtifactType,
+    local_is_dir: Option<bool>,
+) -> PathBuf {
+    let base = artifact_base_in_registry(repo_dir, reg, artifact_type);
+
+    // Only skills can be directories
+    if artifact_type.is_directory_type() {
+        let dir_path = base.join(name);
+        let is_real_dir = dir_path
+            .symlink_metadata()
+            .map(|m| m.file_type().is_dir())
+            .unwrap_or(false);
+
+        if is_real_dir || local_is_dir == Some(true) {
+            return dir_path;
+        }
+    }
+
+    base.join(format!("{name}.md"))
+}
+
+/// The relative path of an item within a registry (for git log queries).
+pub fn artifact_path_relative(reg: &Registry, name: &str, artifact_type: ArtifactType) -> String {
+    // Check if the registry has a typed subdirectory by looking at the path config.
+    // We use the section name as the subdirectory.
+    let section = artifact_type.section();
+    match &reg.path {
+        Some(p) => format!("{p}/{section}/{name}"),
+        None => format!("{section}/{name}"),
+    }
+}
+
+/// List all items of a given type in a registry.
+pub fn list_artifacts(
+    repo_dir: &Path,
+    reg: &Registry,
+    artifact_type: ArtifactType,
+) -> Result<Vec<String>> {
+    let base = artifact_base_in_registry(repo_dir, reg, artifact_type);
+
+    if !base.exists() {
+        return Ok(vec![]);
+    }
+
+    let mut items = Vec::new();
+    for entry in std::fs::read_dir(&base)? {
+        let entry = entry?;
+        let ft = entry.file_type()?;
+        if ft.is_symlink() {
+            continue;
+        }
+        let path = entry.path();
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.starts_with('.') {
+            continue;
+        }
+
+        // Skip subdirectories that are type names (skills/, agents/, rules/)
+        // to avoid listing them as items in legacy flat registries
+        if ft.is_dir() && matches!(name.as_str(), "skills" | "agents" | "rules") {
+            continue;
+        }
+
+        if artifact_type.is_directory_type() {
+            // Skills: directory with SKILL.md or .md file
+            if ft.is_dir() && path.join("SKILL.md").exists() {
+                items.push(name);
+            } else if ft.is_file()
+                && path.extension().map(|e| e == "md").unwrap_or(false)
+                && let Some(stem) = path.file_stem()
+            {
+                items.push(stem.to_string_lossy().to_string());
+            }
+        } else {
+            // Agents and rules: .md files only
+            if ft.is_file()
+                && path.extension().map(|e| e == "md").unwrap_or(false)
+                && let Some(stem) = path.file_stem()
+            {
+                items.push(stem.to_string_lossy().to_string());
+            }
+        }
+    }
+    items.sort();
+    items.dedup();
+    Ok(items)
 }

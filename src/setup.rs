@@ -12,7 +12,10 @@ pub fn setup() -> Result<()> {
     eprintln!("  config:  {}", Config::path()?.display());
     eprintln!("  hook:    installed in ~/.claude/settings.json");
     eprintln!();
-    eprintln!("Next: edit {} to add registries, then `rune init` in a project.", Config::path()?.display());
+    eprintln!(
+        "Next: edit {} to add registries, then `rune init` in a project.",
+        Config::path()?.display()
+    );
     Ok(())
 }
 
@@ -24,9 +27,7 @@ fn setup_config() -> Result<()> {
         return Ok(());
     }
 
-    let config = Config {
-        registry: vec![],
-    };
+    let config = Config { registry: vec![] };
     config.save()?;
     eprintln!("Created {}", path.display());
     Ok(())
@@ -54,11 +55,12 @@ fn setup_hook() -> Result<()> {
     let mut settings: serde_json::Value = if settings_path.exists() {
         let content = std::fs::read_to_string(&settings_path)
             .with_context(|| format!("Failed to read {}", settings_path.display()))?;
-        serde_json::from_str(&content)
-            .with_context(|| format!(
+        serde_json::from_str(&content).with_context(|| {
+            format!(
                 "Failed to parse {}. Fix the JSON manually or delete the file and re-run setup.",
                 settings_path.display()
-            ))?
+            )
+        })?
     } else {
         std::fs::create_dir_all(settings_path.parent().unwrap())?;
         serde_json::json!({})
@@ -68,18 +70,25 @@ fn setup_hook() -> Result<()> {
     if let Some(hooks) = settings.get("hooks")
         && let Some(post) = hooks.get("PostToolUse")
     {
-        let already = post.as_array().map(|arr| {
-            arr.iter().any(|group| {
-                group.get("hooks").and_then(|h| h.as_array()).map(|hooks| {
-                    hooks.iter().any(|h| {
-                        h.get("command")
-                            .and_then(|c| c.as_str())
-                            .map(|c| c.contains("rune"))
-                            .unwrap_or(false)
-                    })
-                }).unwrap_or(false)
+        let already = post
+            .as_array()
+            .map(|arr| {
+                arr.iter().any(|group| {
+                    group
+                        .get("hooks")
+                        .and_then(|h| h.as_array())
+                        .map(|hooks| {
+                            hooks.iter().any(|h| {
+                                h.get("command")
+                                    .and_then(|c| c.as_str())
+                                    .map(|c| c.contains("rune"))
+                                    .unwrap_or(false)
+                            })
+                        })
+                        .unwrap_or(false)
+                })
             })
-        }).unwrap_or(false);
+            .unwrap_or(false);
 
         if already {
             eprintln!("Hook already installed in settings.json");
@@ -90,8 +99,7 @@ fn setup_hook() -> Result<()> {
     // Backup existing settings before modifying
     if settings_path.exists() {
         let backup = settings_path.with_extension("json.bak");
-        std::fs::copy(&settings_path, &backup)
-            .with_context(|| "Failed to backup settings.json")?;
+        std::fs::copy(&settings_path, &backup).with_context(|| "Failed to backup settings.json")?;
     }
 
     // Build the hook entry
@@ -143,7 +151,7 @@ pub fn init(project_dir: &Path) -> Result<()> {
     let manifest = Manifest::default();
     manifest.save(project_dir)?;
     eprintln!("Created {}", path.display());
-    eprintln!("Add skills with: rune add <skill> --from <registry>");
+    eprintln!("Add items with: rune add <name> --from <registry> [-t skill|agent|rule]");
     Ok(())
 }
 
@@ -156,8 +164,17 @@ set -e
 INPUT=$(cat)
 FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty')
 
-# Only act on .claude/skills/*.md files
-if [[ "$FILE_PATH" != *".claude/skills/"* ]] || [[ "$FILE_PATH" != *.md ]]; then
+# Only act on .claude/skills/, .claude/agents/, or .claude/rules/ .md files
+MATCH=0
+if [[ "$FILE_PATH" == *".claude/skills/"* ]] && [[ "$FILE_PATH" == *.md ]]; then
+    MATCH=1
+elif [[ "$FILE_PATH" == *".claude/agents/"* ]] && [[ "$FILE_PATH" == *.md ]]; then
+    MATCH=1
+elif [[ "$FILE_PATH" == *".claude/rules/"* ]] && [[ "$FILE_PATH" == *.md ]]; then
+    MATCH=1
+fi
+
+if [[ "$MATCH" -eq 0 ]]; then
     exit 0
 fi
 
@@ -167,7 +184,6 @@ while [[ "$DIR" != "/" ]]; do
     if [[ -f "$DIR/.claude/rune.toml" ]] || [[ -f "$DIR/rune.toml" ]]; then
         break
     fi
-    # Go up from .claude/skills/ to project root
     DIR=$(dirname "$DIR")
 done
 

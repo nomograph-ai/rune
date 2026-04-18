@@ -3,10 +3,73 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
+/// The three types of items rune can manage.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ArtifactType {
+    Skill,
+    Agent,
+    Rule,
+}
+
+/// All supported types, in display order.
+pub const ALL_TYPES: [ArtifactType; 3] =
+    [ArtifactType::Skill, ArtifactType::Agent, ArtifactType::Rule];
+
+impl ArtifactType {
+    /// TOML section name and manifest key.
+    pub fn section(self) -> &'static str {
+        match self {
+            Self::Skill => "skills",
+            Self::Agent => "agents",
+            Self::Rule => "rules",
+        }
+    }
+
+    /// Default installation directory relative to project root.
+    pub fn default_dir(self) -> &'static str {
+        match self {
+            Self::Skill => ".claude/skills",
+            Self::Agent => ".claude/agents",
+            Self::Rule => ".claude/rules",
+        }
+    }
+
+    /// Whether items of this type are stored as directories (with SKILL.md).
+    /// Only skills use directory format; agents and rules are single files.
+    pub fn is_directory_type(self) -> bool {
+        matches!(self, Self::Skill)
+    }
+
+    /// Singular display name.
+    pub fn singular(self) -> &'static str {
+        match self {
+            Self::Skill => "skill",
+            Self::Agent => "agent",
+            Self::Rule => "rule",
+        }
+    }
+
+    /// Parse from a string (case-insensitive).
+    pub fn parse(s: &str) -> Option<Self> {
+        match s.to_lowercase().as_str() {
+            "skill" | "skills" => Some(Self::Skill),
+            "agent" | "agents" => Some(Self::Agent),
+            "rule" | "rules" => Some(Self::Rule),
+            _ => None,
+        }
+    }
+}
+
+impl std::fmt::Display for ArtifactType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.singular())
+    }
+}
+
 /// Per-project manifest (.claude/rune.toml).
-/// Declares which skills this project uses.
+/// Declares which skills, agents, and rules this project uses.
 ///
-/// Skills can be declared as:
+/// Items can be declared as:
 ///   tidy = {}                          # resolved by registry priority
 ///   voice = { registry = "arcana" }    # pinned to specific registry
 ///   tidy = "runes"                     # shorthand pin (v0.1 compat)
@@ -14,9 +77,21 @@ use std::path::{Path, PathBuf};
 pub struct Manifest {
     #[serde(default)]
     pub skills: BTreeMap<String, SkillEntry>,
+
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub agents: BTreeMap<String, SkillEntry>,
+
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub rules: BTreeMap<String, SkillEntry>,
+
+    /// Optional path overrides per type. Keys are type names (skills, agents, rules).
+    /// Values are paths relative to the project root.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub paths: Option<BTreeMap<String, String>>,
 }
 
-/// A skill declaration -- either a pinned registry name or a config table.
+/// A skill/agent/rule declaration -- either a pinned registry name or a config table.
+/// Name kept as SkillEntry for serde backward compatibility.
 #[derive(Debug, Clone)]
 pub struct SkillEntry {
     /// If set, pinned to this registry. If None, resolved by priority.
@@ -97,7 +172,8 @@ impl Manifest {
         project_dir.join(".claude").join("rune.toml")
     }
 
-    /// Where skills live in a project.
+    /// Where skills live in a project (convenience alias for lib consumers).
+    #[allow(dead_code)]
     pub fn skills_dir(project_dir: &Path) -> PathBuf {
         project_dir.join(".claude").join("skills")
     }
@@ -107,10 +183,80 @@ impl Manifest {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        let content = toml::to_string_pretty(self)
-            .context("Failed to serialize manifest")?;
+        let content = toml::to_string_pretty(self).context("Failed to serialize manifest")?;
         std::fs::write(&path, content)
             .with_context(|| format!("Failed to write {}", path.display()))?;
         Ok(())
+    }
+
+    /// Get the section map for a given type (immutable).
+    pub fn section(&self, artifact_type: ArtifactType) -> &BTreeMap<String, SkillEntry> {
+        match artifact_type {
+            ArtifactType::Skill => &self.skills,
+            ArtifactType::Agent => &self.agents,
+            ArtifactType::Rule => &self.rules,
+        }
+    }
+
+    /// Get the section map for a given type (mutable).
+    pub fn section_mut(
+        &mut self,
+        artifact_type: ArtifactType,
+    ) -> &mut BTreeMap<String, SkillEntry> {
+        match artifact_type {
+            ArtifactType::Skill => &mut self.skills,
+            ArtifactType::Agent => &mut self.agents,
+            ArtifactType::Rule => &mut self.rules,
+        }
+    }
+
+    /// Iterate all items across all types.
+    #[allow(dead_code)]
+    pub fn all_items(&self) -> Vec<(ArtifactType, &str, &SkillEntry)> {
+        let mut items = Vec::new();
+        for at in ALL_TYPES {
+            for (name, entry) in self.section(at) {
+                items.push((at, name.as_str(), entry));
+            }
+        }
+        items
+    }
+
+    /// Total count of items across all types.
+    pub fn total_count(&self) -> usize {
+        self.skills.len() + self.agents.len() + self.rules.len()
+    }
+
+    /// Find which type a name belongs to. Searches all sections.
+    /// If the name appears in multiple sections, returns the first match
+    /// and prints a warning.
+    pub fn find_type(&self, name: &str) -> Option<ArtifactType> {
+        let mut found: Vec<ArtifactType> = Vec::new();
+        for at in ALL_TYPES {
+            if self.section(at).contains_key(name) {
+                found.push(at);
+            }
+        }
+        if found.len() > 1 {
+            eprintln!(
+                "  warning: {name} appears in multiple sections: {}",
+                found
+                    .iter()
+                    .map(|t| t.section())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+        }
+        found.into_iter().next()
+    }
+
+    /// Get the installation directory for a type, respecting [paths] overrides.
+    pub fn artifact_dir(&self, project_dir: &Path, artifact_type: ArtifactType) -> PathBuf {
+        if let Some(ref paths) = self.paths
+            && let Some(custom) = paths.get(artifact_type.section())
+        {
+            return project_dir.join(custom);
+        }
+        project_dir.join(artifact_type.default_dir())
     }
 }
