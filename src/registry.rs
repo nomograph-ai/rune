@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use fs2::FileExt;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::Mutex;
 
 use crate::config::{Config, Registry};
@@ -665,6 +666,143 @@ pub fn commit_and_push(
 /// for skills that don't exist in the registry yet (new skill push).
 pub fn skill_path(repo_dir: &Path, reg: &Registry, skill_name: &str) -> PathBuf {
     skill_path_with_hint(repo_dir, reg, skill_name, None)
+}
+
+/// Materialize an artifact at a specific git ref.
+///
+/// Common case (`version = None`): returns the path inside the registry's
+/// primary checkout at the configured branch (same as `artifact_path`).
+///
+/// Versioned case: creates (or reuses) a cached git worktree of the
+/// registry at the given ref and returns the artifact path inside it. The
+/// worktree is keyed by `(registry, ref)` so multiple pinned skills sharing
+/// a ref re-use one checkout. Worktrees live under
+/// `<cache_dir>/worktrees/<registry--fs_name>--<sanitized_ref>/`.
+///
+/// Returns an error for archive-type registries when a version is requested
+/// — those don't have git history to walk.
+pub fn materialize_artifact(
+    reg: &Registry,
+    name: &str,
+    at: crate::manifest::ArtifactType,
+    version: Option<&str>,
+) -> Result<PathBuf> {
+    let repo_dir = ensure_registry(reg)?;
+    let default_path = artifact_path(&repo_dir, reg, name, at);
+
+    let Some(ver) = version else {
+        return Ok(default_path);
+    };
+
+    if reg.source == "archive" {
+        anyhow::bail!(
+            "Version pin `@{ver}` on {name} is not supported for archive-type registry {} -- archive registries have no git history to resolve refs against",
+            reg.name
+        );
+    }
+
+    let wt = worktree_at_ref(reg, &repo_dir, ver)?;
+    // Same directory layout applies inside the worktree.
+    Ok(artifact_path(&wt, reg, name, at))
+}
+
+/// Resolved commit hash for an artifact's effective ref. Used when
+/// populating the lockfile so `registry_commit` reflects the version-pinned
+/// ref for pinned skills and the main-branch tip for unpinned ones.
+pub fn resolved_commit(reg: &Registry, version: Option<&str>) -> Result<String> {
+    let repo_dir = ensure_registry(reg)?;
+    let reference = version.unwrap_or(&reg.branch);
+    git_rev_parse(&repo_dir, reference)
+}
+
+/// Materialize a shared worktree of `reg` at `ref_spec`. Idempotent across
+/// invocations — if the worktree already exists it's reused. Tries `ref_spec`
+/// first, falls back to `origin/<ref_spec>` for branch names not yet tracked
+/// locally as refs.
+fn worktree_at_ref(reg: &Registry, repo_dir: &Path, ref_spec: &str) -> Result<PathBuf> {
+    let cache_dir = Config::cache_dir()?;
+    let worktrees_base = cache_dir.join("worktrees");
+    let key = format!("{}--{}", reg.fs_name(), sanitize_ref(ref_spec));
+    let dest = worktrees_base.join(&key);
+
+    if dest.exists() {
+        // Refresh for branch-type refs — tag/commit resolutions are stable
+        // but a branch may have advanced. Cheap no-op if up to date.
+        let _ = Command::new("git")
+            .args(["-C", dest.to_str().unwrap(), "fetch", "--quiet", "origin"])
+            .status();
+        return Ok(dest);
+    }
+
+    std::fs::create_dir_all(&worktrees_base).with_context(|| {
+        format!(
+            "Failed to create worktree cache directory {}",
+            worktrees_base.display()
+        )
+    })?;
+
+    // Detached worktree at the requested ref. Tries the ref verbatim first,
+    // then `origin/<ref>` so a user writing `@main` can Just Work even when
+    // the local clone doesn't have a main branch tracked (common for
+    // detached-clone registries).
+    let mkwt = |r: &str| -> std::process::Output {
+        Command::new("git")
+            .args([
+                "-C",
+                repo_dir.to_str().unwrap(),
+                "worktree",
+                "add",
+                "--detach",
+                dest.to_str().unwrap(),
+                r,
+            ])
+            .output()
+            .expect("git worktree add: failed to spawn")
+    };
+
+    let first = mkwt(ref_spec);
+    if first.status.success() {
+        return Ok(dest);
+    }
+    let origin_ref = format!("origin/{ref_spec}");
+    let second = mkwt(&origin_ref);
+    if second.status.success() {
+        return Ok(dest);
+    }
+
+    let _ = std::fs::remove_dir_all(&dest);
+    anyhow::bail!(
+        "Failed to materialize ref `{ref_spec}` for registry {}: {}",
+        reg.name,
+        String::from_utf8_lossy(&second.stderr).trim(),
+    );
+}
+
+/// Resolve an arbitrary git ref (tag, branch, commit) to a full commit SHA
+/// inside `repo_dir`. Tries the ref verbatim, falls back to `origin/<ref>`.
+fn git_rev_parse(repo_dir: &Path, ref_spec: &str) -> Result<String> {
+    let run = |r: &str| -> Result<String> {
+        let out = Command::new("git")
+            .args(["-C", repo_dir.to_str().unwrap(), "rev-parse", r])
+            .output()
+            .with_context(|| format!("git rev-parse {r}"))?;
+        if !out.status.success() {
+            anyhow::bail!("git rev-parse failed for {r}");
+        }
+        Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+    };
+    run(ref_spec).or_else(|_| run(&format!("origin/{ref_spec}")))
+}
+
+/// Make a git ref filesystem-safe. Refs can contain `/` (origin/main) and
+/// other shell-friendly characters; we replace everything non-alnum with
+/// `-` for the cache path. Display values are preserved unchanged in the
+/// lockfile and user-facing messages.
+fn sanitize_ref(ref_spec: &str) -> String {
+    ref_spec
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '.' { c } else { '-' })
+        .collect()
 }
 
 pub fn skill_path_with_hint(

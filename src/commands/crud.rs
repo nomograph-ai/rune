@@ -46,9 +46,13 @@ pub fn add(
     let entry = if registry_name.is_some() {
         SkillEntry {
             registry: Some(reg.name.clone()),
+            version: None,
         }
     } else {
-        SkillEntry { registry: None }
+        SkillEntry {
+            registry: None,
+            version: None,
+        }
     };
     manifest
         .section_mut(artifact_type)

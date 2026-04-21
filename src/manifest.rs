@@ -70,9 +70,15 @@ impl std::fmt::Display for ArtifactType {
 /// Declares which skills, agents, and rules this project uses.
 ///
 /// Items can be declared as:
-///   tidy = {}                          # resolved by registry priority
-///   voice = { registry = "arcana" }    # pinned to specific registry
-///   tidy = "runes"                     # shorthand pin (v0.1 compat)
+///   tidy = {}                                    # resolved by registry priority
+///   voice = { registry = "andunn/arcana" }       # pinned to specific registry
+///   tidy = "andrewdunndev/arcana"                # shorthand pin, track main
+///   voice = "andunn/arcana@v1.2.0"               # shorthand pin at tag
+///   voice = { registry = "andunn/arcana", version = "v1.2.0" }   # explicit form
+///
+/// `version` can be any git ref — a tag, a branch, or a commit hash. When
+/// omitted the skill tracks the registry's configured branch (main by
+/// default) exactly as before.
 #[derive(Debug, Deserialize, Serialize, Default)]
 pub struct Manifest {
     #[serde(default)]
@@ -96,9 +102,14 @@ pub struct Manifest {
 pub struct SkillEntry {
     /// If set, pinned to this registry. If None, resolved by priority.
     pub registry: Option<String>,
+    /// Optional git ref to pin this item at (tag, branch, or commit hash).
+    /// If None, tracks the registry's configured branch (default `main`).
+    /// Not supported for archive-type registries — will error at sync time.
+    pub version: Option<String>,
 }
 
-// Custom serde: accept both "registry-name" (string) and { registry = "name" } (table)
+// Custom serde: accept both "registry-name" (string, optionally with `@version`
+// suffix) and { registry = "name", version = "..." } (table).
 impl<'de> Deserialize<'de> for SkillEntry {
     fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
     where
@@ -115,14 +126,27 @@ impl<'de> Deserialize<'de> for SkillEntry {
         struct Table {
             #[serde(default)]
             registry: Option<String>,
+            #[serde(default)]
+            version: Option<String>,
         }
 
         match Raw::deserialize(deserializer)? {
-            Raw::Pinned(name) => Ok(SkillEntry {
-                registry: Some(name),
-            }),
+            Raw::Pinned(name) => {
+                // Parse `<registry>@<version>` shorthand.
+                let (reg, ver) = match name.rsplit_once('@') {
+                    Some((r, v)) if !r.is_empty() && !v.is_empty() => {
+                        (r.to_string(), Some(v.to_string()))
+                    }
+                    _ => (name, None),
+                };
+                Ok(SkillEntry {
+                    registry: Some(reg),
+                    version: ver,
+                })
+            }
             Raw::Table(t) => Ok(SkillEntry {
                 registry: t.registry,
+                version: t.version,
             }),
         }
     }
@@ -133,9 +157,11 @@ impl Serialize for SkillEntry {
     where
         S: serde::Serializer,
     {
-        match &self.registry {
-            Some(name) => serializer.serialize_str(name),
-            None => {
+        match (&self.registry, &self.version) {
+            // Shorthand "name" or "name@version" when no other fields set.
+            (Some(name), None) => serializer.serialize_str(name),
+            (Some(name), Some(ver)) => serializer.serialize_str(&format!("{name}@{ver}")),
+            (None, _) => {
                 use serde::ser::SerializeMap;
                 let map = serializer.serialize_map(Some(0))?;
                 map.end()

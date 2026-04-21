@@ -46,7 +46,18 @@ pub fn sync(project_dir: &Path, force: bool) -> Result<u32> {
             };
 
             let repo_dir = registry::ensure_registry(reg)?;
-            let reg_path = registry::artifact_path(&repo_dir, reg, name, at);
+            let reg_path = match registry::materialize_artifact(
+                reg,
+                name,
+                at,
+                entry.version.as_deref(),
+            ) {
+                Ok(p) => p,
+                Err(e) => {
+                    eprintln!("  {name}: {e}");
+                    continue;
+                }
+            };
 
             if !reg_path.exists() {
                 eprintln!(
@@ -130,7 +141,17 @@ pub fn sync(project_dir: &Path, force: bool) -> Result<u32> {
                 } else {
                     registry::artifact_path_relative(reg, name, at)
                 };
-                let registry_commit = registry::skill_commit(&repo_dir, &item_rel);
+                // For pinned skills, record the resolved-ref commit so the
+                // lockfile reflects what was actually synced, not the tip of
+                // main. For unpinned skills, use the existing
+                // "last commit that touched this skill's path" semantics.
+                let registry_commit = if entry.version.is_some() {
+                    registry::resolved_commit(reg, entry.version.as_deref())
+                        .ok()
+                        .and_then(|sha| sha.get(..7).map(str::to_string))
+                } else {
+                    registry::skill_commit(&repo_dir, &item_rel)
+                };
                 lockfile.section_mut(at).insert(
                     name.to_string(),
                     LockedSkill {
