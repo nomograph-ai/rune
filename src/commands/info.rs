@@ -133,7 +133,7 @@ pub fn doctor(project_dir: &Path) -> Result<()> {
         }
 
         let cache_dir = Config::cache_dir()?;
-        let repo_dir = cache_dir.join(&reg.name);
+        let repo_dir = cache_dir.join(reg.fs_name());
         let ro = if reg.readonly {
             color::dim(" (readonly)")
         } else {
@@ -457,7 +457,7 @@ pub fn status(project_dir: &Path) -> Result<()> {
     eprintln!("{}", color::bold("registries"));
     for reg in &config.registry {
         let cache_dir = Config::cache_dir()?;
-        let repo_dir = cache_dir.join(&reg.name);
+        let repo_dir = cache_dir.join(reg.fs_name());
         let ro = if reg.readonly {
             color::dim(" (ro)")
         } else {

@@ -84,7 +84,7 @@ impl Drop for LockGuard {
 fn lock_registry(reg: &Registry) -> Result<LockGuard> {
     let cache_dir = Config::cache_dir()?;
     std::fs::create_dir_all(&cache_dir)?;
-    let lock_path = cache_dir.join(format!(".{}.lock", reg.name));
+    let lock_path = cache_dir.join(format!(".{}.lock", reg.fs_name()));
     let lock_file = std::fs::OpenOptions::new()
         .create(true)
         .truncate(false)
@@ -110,7 +110,7 @@ fn lock_registry(reg: &Registry) -> Result<LockGuard> {
 /// Uses file locking to prevent concurrent corruption.
 pub fn ensure_registry(reg: &Registry) -> Result<PathBuf> {
     let cache_dir = Config::cache_dir()?;
-    let repo_dir = cache_dir.join(&reg.name);
+    let repo_dir = cache_dir.join(reg.fs_name());
 
     if is_offline() {
         if repo_dir.exists() {
@@ -155,10 +155,10 @@ fn ensure_archive_registry(reg: &Registry, dest: &Path) -> Result<()> {
     let cache_dir = dest.parent().context("Invalid cache path")?;
     std::fs::create_dir_all(cache_dir)?;
 
-    let etag_path = cache_dir.join(format!(".{}.etag", reg.name));
+    let etag_path = cache_dir.join(format!(".{}.etag", reg.fs_name()));
 
     // Try conditional download with etag
-    let tmp_tar = cache_dir.join(format!(".{}-archive.tar.gz", reg.name));
+    let tmp_tar = cache_dir.join(format!(".{}-archive.tar.gz", reg.fs_name()));
     let mut curl_args = vec![
         "-fsSL",
         "--proto",
@@ -184,7 +184,7 @@ fn ensure_archive_registry(reg: &Registry, dest: &Path) -> Result<()> {
         None
     };
 
-    let header_path = cache_dir.join(format!(".{}-headers.txt", reg.name));
+    let header_path = cache_dir.join(format!(".{}-headers.txt", reg.fs_name()));
 
     // Always dump response headers to capture etag
     let header_path_str = header_path.to_string_lossy().to_string();
@@ -267,7 +267,7 @@ fn ensure_archive_registry(reg: &Registry, dest: &Path) -> Result<()> {
     }
 
     // Extract -- GitHub/GitLab archives have a top-level directory
-    let tmp_extract = cache_dir.join(format!(".{}-extract", reg.name));
+    let tmp_extract = cache_dir.join(format!(".{}-extract", reg.fs_name()));
     let _ = std::fs::remove_dir_all(&tmp_extract);
     std::fs::create_dir_all(&tmp_extract)?;
 
