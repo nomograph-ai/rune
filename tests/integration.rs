@@ -647,11 +647,12 @@ fn multi_type_manifest_roundtrip() {
         "tidy".to_string(),
         rune::manifest::SkillEntry {
             registry: Some("runes".to_string()),
+            version: None,
         },
     );
     manifest.skills.insert(
         "voice".to_string(),
-        rune::manifest::SkillEntry { registry: None },
+        rune::manifest::SkillEntry { registry: None, version: None },
     );
 
     // Add agents
@@ -659,13 +660,14 @@ fn multi_type_manifest_roundtrip() {
         "researcher".to_string(),
         rune::manifest::SkillEntry {
             registry: Some("runes".to_string()),
+            version: None,
         },
     );
 
     // Add rules
     manifest.rules.insert(
         "no-emdash".to_string(),
-        rune::manifest::SkillEntry { registry: None },
+        rune::manifest::SkillEntry { registry: None, version: None },
     );
 
     // Save and reload
@@ -703,15 +705,15 @@ fn manifest_find_type() {
     let mut manifest = rune::manifest::Manifest::default();
     manifest.skills.insert(
         "tidy".to_string(),
-        rune::manifest::SkillEntry { registry: None },
+        rune::manifest::SkillEntry { registry: None, version: None },
     );
     manifest.agents.insert(
         "researcher".to_string(),
-        rune::manifest::SkillEntry { registry: None },
+        rune::manifest::SkillEntry { registry: None, version: None },
     );
     manifest.rules.insert(
         "no-emdash".to_string(),
-        rune::manifest::SkillEntry { registry: None },
+        rune::manifest::SkillEntry { registry: None, version: None },
     );
 
     assert_eq!(manifest.find_type("tidy"), Some(ArtifactType::Skill));
@@ -727,11 +729,11 @@ fn manifest_section_accessors() {
     let mut manifest = rune::manifest::Manifest::default();
     manifest.section_mut(ArtifactType::Skill).insert(
         "tidy".to_string(),
-        rune::manifest::SkillEntry { registry: None },
+        rune::manifest::SkillEntry { registry: None, version: None },
     );
     manifest.section_mut(ArtifactType::Agent).insert(
         "researcher".to_string(),
-        rune::manifest::SkillEntry { registry: None },
+        rune::manifest::SkillEntry { registry: None, version: None },
     );
 
     assert_eq!(manifest.section(ArtifactType::Skill).len(), 1);
@@ -1077,4 +1079,84 @@ fn validate_name_works() {
     // Alias still works
     assert!(rune::registry::validate_skill_name("tidy").is_ok());
     assert!(rune::registry::validate_skill_name("../escape").is_err());
+}
+
+// ── Skill version (@version suffix + table form) ───────────────────────
+
+#[test]
+fn skill_entry_string_no_version() {
+    // Plain registry name, no version
+    let toml = r#"voice = "andunn/arcana""#;
+    let manifest: toml::Value = toml::from_str(toml).unwrap();
+    let entry: rune::manifest::SkillEntry =
+        manifest.get("voice").unwrap().clone().try_into().unwrap();
+    assert_eq!(entry.registry.as_deref(), Some("andunn/arcana"));
+    assert_eq!(entry.version, None);
+}
+
+#[test]
+fn skill_entry_string_with_version() {
+    // `registry@version` shorthand
+    let toml = r#"voice = "andunn/arcana@v1.2.0""#;
+    let manifest: toml::Value = toml::from_str(toml).unwrap();
+    let entry: rune::manifest::SkillEntry =
+        manifest.get("voice").unwrap().clone().try_into().unwrap();
+    assert_eq!(entry.registry.as_deref(), Some("andunn/arcana"));
+    assert_eq!(entry.version.as_deref(), Some("v1.2.0"));
+}
+
+#[test]
+fn skill_entry_string_commit_hash() {
+    // Full commit hash as version
+    let toml = r#"voice = "andunn/arcana@abc123def456""#;
+    let manifest: toml::Value = toml::from_str(toml).unwrap();
+    let entry: rune::manifest::SkillEntry =
+        manifest.get("voice").unwrap().clone().try_into().unwrap();
+    assert_eq!(entry.registry.as_deref(), Some("andunn/arcana"));
+    assert_eq!(entry.version.as_deref(), Some("abc123def456"));
+}
+
+#[test]
+fn skill_entry_table_with_version() {
+    // Explicit table form
+    let toml = r#"
+        [voice]
+        registry = "andunn/arcana"
+        version = "v1.2.0"
+    "#;
+    let manifest: toml::Value = toml::from_str(toml).unwrap();
+    let entry: rune::manifest::SkillEntry =
+        manifest.get("voice").unwrap().clone().try_into().unwrap();
+    assert_eq!(entry.registry.as_deref(), Some("andunn/arcana"));
+    assert_eq!(entry.version.as_deref(), Some("v1.2.0"));
+}
+
+#[test]
+fn skill_entry_serialize_shorthand() {
+    // Round-trip: with version serializes as "voice = \"registry@version\""
+    let mut manifest = rune::manifest::Manifest::default();
+    manifest.skills.insert(
+        "voice".to_string(),
+        rune::manifest::SkillEntry {
+            registry: Some("andunn/arcana".to_string()),
+            version: Some("v1.2.0".to_string()),
+        },
+    );
+    let out = toml::to_string(&manifest).unwrap();
+    assert!(
+        out.contains("voice = \"andunn/arcana@v1.2.0\""),
+        "got: {out}"
+    );
+}
+
+#[test]
+fn skill_entry_empty_version_keeps_registry() {
+    // Trailing `@` with nothing after it isn't a real version pin.
+    let toml = r#"voice = "andunn/arcana@""#;
+    let manifest: toml::Value = toml::from_str(toml).unwrap();
+    let entry: rune::manifest::SkillEntry =
+        manifest.get("voice").unwrap().clone().try_into().unwrap();
+    // Empty version → treat as no version
+    assert_eq!(entry.registry.as_deref(), Some("andunn/arcana@"));
+    assert_eq!(entry.version, None);
 }

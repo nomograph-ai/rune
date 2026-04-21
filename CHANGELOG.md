@@ -1,5 +1,35 @@
 # Changelog
 
+## v0.9.0 (2026-04-21)
+
+### Added
+
+- Skill versioning via `@version` suffix in `rune.toml`. Any git ref is
+  valid — tag, branch, or commit hash. Supports both shorthand and table
+  forms:
+
+  ```toml
+  voice = "andunn/arcana"                # track main (unchanged)
+  voice = "andunn/arcana@v1.2.0"         # pin to tag
+  voice = "andunn/arcana@abc1234"        # pin to commit
+  voice = { registry = "andunn/arcana", version = "v1.2.0" }
+  ```
+
+  For pinned skills, rune materializes a cached git worktree at the
+  requested ref under `<cache_dir>/worktrees/<registry>--<ref>/` and
+  reads the skill from there. One worktree per (registry, ref) pair
+  covers all skills from that registry pinned to the same version.
+  The lockfile records the resolved commit SHA.
+
+  Only git-type registries support versioning. Archive-type registries
+  error clearly when a pinned version is requested.
+
+### Changed
+
+- `SkillEntry` serde: serializes with version as `"registry@version"`
+  shorthand when both are set, `"registry"` when unversioned. Round-trip
+  preserves both forms.
+
 ## v0.8.1 (2026-04-21)
 
 ### Fixed
