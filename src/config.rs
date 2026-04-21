@@ -43,6 +43,19 @@ pub struct Registry {
     pub git_name: Option<String>,
 }
 
+impl Registry {
+    /// Filesystem-safe form of the registry name. Used for lock files,
+    /// cache directories, etag files, and anywhere else the name hits
+    /// the filesystem. Necessary because registry names may include `/`
+    /// (e.g. "andunn/arcana") which the filesystem treats as a path
+    /// separator.
+    ///
+    /// Display uses `name` unchanged; only path construction sanitizes.
+    pub fn fs_name(&self) -> String {
+        self.name.replace('/', "--")
+    }
+}
+
 fn default_source() -> String {
     "git".to_string()
 }
