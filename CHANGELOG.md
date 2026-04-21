@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.8.1 (2026-04-21)
+
+### Fixed
+
+- Registry names containing `/` (e.g. `andunn/arcana`, `andrewdunndev/arcana`)
+  now work. Previously the name was used unsanitized in filesystem paths,
+  causing lock-file creation and cache-directory construction to fail with
+  "No such file or directory." Added `Registry::fs_name()` that replaces
+  `/` with `--` for filesystem operations; display name remains unchanged.
+  Path-shaped registry names are the recommended convention going forward
+  because they are self-describing in project `rune.toml` files without
+  cross-referencing the global config.
+
 ## v0.8.0 (2026-04-18)
 
 ### Added
