@@ -252,6 +252,16 @@ fn ensure_archive_registry(reg: &Registry, dest: &Path) -> Result<()> {
     }
     let _ = std::fs::remove_file(&header_path);
 
+    // If tmp_tar wasn't produced but curl returned success, we got a 304
+    // Not Modified response with an empty body -- curl treats 304 as a
+    // non-failure and exits 0 without writing to -o. (The 304 branch
+    // above only catches the case where curl's own exit status reflects
+    // the failure.) In that situation the cached extracted dest is
+    // authoritative; skip the extract step.
+    if !tmp_tar.exists() {
+        return Ok(());
+    }
+
     // Check if downloaded content matches what we have (content hash)
     if dest.exists()
         && let (Ok(new_bytes), Some(old_hash)) =
