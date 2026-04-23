@@ -135,7 +135,7 @@ fn collect_files_skips_symlinks() {
     fs::write(dir.join("SKILL.md"), "content").unwrap();
     unix_fs::symlink("/etc/passwd", dir.join("link")).unwrap();
 
-    let files = rune::registry::collect_files_public(&dir);
+    let files = rune::registry::fs::collect_files_public(&dir);
     let names: Vec<String> = files
         .iter()
         .map(|f| f.file_name().unwrap().to_string_lossy().to_string())
@@ -158,7 +158,7 @@ fn collect_files_skips_dotfiles() {
     fs::write(dir.join(".git").join("config"), "secret").unwrap();
     fs::write(dir.join(".hidden"), "hidden").unwrap();
 
-    let files = rune::registry::collect_files_public(&dir);
+    let files = rune::registry::fs::collect_files_public(&dir);
     let names: Vec<String> = files
         .iter()
         .map(|f| f.to_string_lossy().to_string())

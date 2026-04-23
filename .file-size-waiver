@@ -1,4 +1,3 @@
-src/registry.rs
 src/commands/info.rs
 src/commands/upstream.rs
 tests/integration.rs
