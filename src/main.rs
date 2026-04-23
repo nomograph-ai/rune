@@ -176,6 +176,13 @@ enum Commands {
     /// Diagnose configuration and registry health
     Doctor,
 
+    /// Emit the skill file: concepts, lifecycle, critical rules, when-to-use
+    ///
+    /// Print a self-documenting reference to stdout. Designed to be piped
+    /// into an agent's skill listing so LLMs have operating context before
+    /// touching the tool.
+    Skill,
+
     /// Generate shell completions
     Completions {
         /// Shell (zsh, bash, fish)
@@ -281,6 +288,10 @@ fn main() -> Result<()> {
         Commands::Audit => commands::audit(),
         Commands::Clean => commands::clean(),
         Commands::Doctor => commands::doctor(&project_dir),
+        Commands::Skill => {
+            print!("{}", include_str!("../resources/skill.md"));
+            Ok(())
+        }
         Commands::Completions { shell } => {
             let shell = match shell.as_str() {
                 "zsh" => clap_complete::Shell::Zsh,

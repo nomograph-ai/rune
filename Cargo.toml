@@ -1,6 +1,6 @@
 [package]
 name = "nomograph-rune"
-version = "0.13.0"
+version = "0.14.0"
 edition = "2024"
 description = "Registry manager for AI coding agent skills, agents, and rules"
 authors = ["Andrew Dunn <andunn@gitlab.com>"]
