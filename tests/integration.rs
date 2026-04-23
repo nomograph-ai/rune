@@ -1201,6 +1201,27 @@ fn skill_entry_empty_version_keeps_registry() {
 }
 
 #[test]
+fn hook_script_covers_all_artifact_types() {
+    // Derivation obligation: the hook script's file-path matcher must
+    // cover every ArtifactType. Adding a fourth type without updating
+    // resources/hook.sh would silently leak its file events to no hook
+    // handler. This test links ALL_TYPES (the spec) to the hook script
+    // (the derived artifact) so drift between them is a CI failure.
+    let hook = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/resources/hook.sh"))
+        .expect("hook script must be present for testing");
+    for at in rune::manifest::ALL_TYPES {
+        let dir = at.default_dir();
+        assert!(
+            hook.contains(dir),
+            "hook.sh is missing a file-path match for {} (expected substring {dir:?}). \
+             Add the case arm to resources/hook.sh, or remove {} from ArtifactType.",
+            at.singular(),
+            at.singular()
+        );
+    }
+}
+
+#[test]
 fn resolve_artifact_handles_slash_in_registry_name() {
     // Regression test for v0.8.1-era bug: Config::resolve_artifact must use
     // reg.fs_name() (replaces `/` with `--`) when constructing the cache path,
