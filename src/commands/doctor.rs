@@ -124,15 +124,15 @@ pub fn doctor(project_dir: &Path) -> Result<()> {
         );
     }
 
-    // Manifest health: check for entries referencing unconfigured registries
-    let configured: std::collections::HashSet<String> =
-        config.registry.iter().map(|r| r.name.clone()).collect();
+    // Manifest health: entries referencing unconfigured registries.
+    // Uses config.registry(...) so aliases resolve — a manifest entry
+    // that matches a registry alias is considered configured.
     if let Some(manifest) = Manifest::try_load(project_dir)? {
         let mut stale: Vec<(String, String, &'static str)> = Vec::new();
         for at in ALL_TYPES {
             for (name, entry) in manifest.section(at) {
                 if let Some(reg) = entry.registry.as_deref()
-                    && !configured.contains(reg)
+                    && config.registry(reg).is_none()
                 {
                     stale.push((name.clone(), reg.to_string(), at.singular()));
                 }
@@ -163,7 +163,57 @@ pub fn doctor(project_dir: &Path) -> Result<()> {
                     color::cyan(reg)
                 );
             }
-            eprintln!("  run: rune prune  (remove stale entries)");
+            eprintln!(
+                "  fix: add `aliases = [\"<old-name>\"]` to the renamed registry in \
+                 config.toml, edit the manifest entries, or run `rune prune`."
+            );
+        }
+    }
+
+    // Lockfile drift health: entries whose `registry` field doesn't
+    // resolve in the current config (even via alias). This catches
+    // registry renames that happened between syncs — the lock carries
+    // the old canonical name, the config is under a new name, no
+    // alias bridges them yet. Proactive surface; commands that use
+    // this lock would fail at runtime otherwise.
+    if lockfile_path.exists()
+        && let Ok(lf) = Lockfile::load(project_dir)
+    {
+        let mut drifted: Vec<(String, String, &'static str)> = Vec::new();
+        for at in ALL_TYPES {
+            for (name, locked) in lf.section(at) {
+                if config.registry(&locked.registry).is_none() {
+                    drifted.push((name.clone(), locked.registry.clone(), at.singular()));
+                }
+            }
+        }
+        if drifted.is_empty() {
+            // quiet: covered by the lockfile ok line above
+        } else {
+            eprintln!(
+                "  {}",
+                color::yellow(&format!(
+                    "lockfile: {} entr{} reference unresolvable registr{}:",
+                    drifted.len(),
+                    if drifted.len() == 1 { "y" } else { "ies" },
+                    if drifted.len() == 1 { "y" } else { "ies" }
+                ))
+            );
+            for (name, reg, kind) in &drifted {
+                eprintln!(
+                    "    {} ({kind}) (lock registry: {})",
+                    color::yellow(name),
+                    color::cyan(reg)
+                );
+            }
+            eprintln!(
+                "  fix: add `aliases = [\"{}\"]` to the corresponding registry in \
+                 config.toml (backward-compatible), or re-sync to refresh the lock.",
+                drifted
+                    .first()
+                    .map(|(_, r, _)| r.as_str())
+                    .unwrap_or("<old-name>")
+            );
         }
     }
 
