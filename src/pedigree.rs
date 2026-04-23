@@ -15,6 +15,25 @@ pub struct Pedigree {
 }
 
 impl Pedigree {
+    /// Best-effort load: surfaces a `warning:` line to stderr on any
+    /// parse/IO failure and returns the default (empty) pedigree.
+    ///
+    /// Use for bulk scans (browse, audit, upstream) where one bad
+    /// SKILL.md shouldn't abort the whole command. Prefer `from_skill`
+    /// when failure should propagate.
+    pub fn from_skill_or_warn(path: &Path) -> Self {
+        match Self::from_skill(path) {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!(
+                    "  warning: could not read pedigree at {}: {e}",
+                    path.display()
+                );
+                Self::default()
+            }
+        }
+    }
+
     /// Parse pedigree fields from a skill path (file or directory).
     pub fn from_skill(path: &Path) -> Result<Self> {
         let skill_file = if path.is_dir() {

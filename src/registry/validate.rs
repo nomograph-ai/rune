@@ -1,11 +1,5 @@
 use anyhow::Result;
 
-/// Validate a skill name contains only safe characters.
-/// Prevents path traversal attacks via names like `../../etc/passwd`.
-pub fn validate_skill_name(name: &str) -> Result<()> {
-    validate_name(name)
-}
-
 /// Validate an item name contains only safe characters.
 /// Prevents path traversal attacks via names like `../../etc/passwd`.
 pub fn validate_name(name: &str) -> Result<()> {
