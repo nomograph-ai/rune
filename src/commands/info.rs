@@ -13,7 +13,7 @@ use crate::registry;
 pub fn ls(project_dir: &Path) -> Result<()> {
     let config = Config::load()?;
     let manifest = Manifest::load(project_dir)?;
-    let lockfile = Lockfile::load(project_dir).unwrap_or_default();
+    let lockfile = Lockfile::load(project_dir)?;
 
     if manifest.total_count() == 0 {
         eprintln!("No items in manifest. Run `rune add <name>`.");
@@ -194,7 +194,7 @@ pub fn doctor(project_dir: &Path) -> Result<()> {
     // Lockfile
     let lockfile_path = Lockfile::path(project_dir);
     if lockfile_path.exists() {
-        let lf = Lockfile::load(project_dir).unwrap_or_default();
+        let lf = Lockfile::load(project_dir)?;
         eprintln!(
             "  lockfile: {} entries locked {}",
             lf.total_count(),
@@ -210,7 +210,7 @@ pub fn doctor(project_dir: &Path) -> Result<()> {
     // Manifest health: check for entries referencing unconfigured registries
     let configured: std::collections::HashSet<String> =
         config.registry.iter().map(|r| r.name.clone()).collect();
-    if let Some(manifest) = Manifest::try_load(project_dir) {
+    if let Some(manifest) = Manifest::try_load(project_dir)? {
         let mut stale: Vec<(String, String, &'static str)> = Vec::new();
         for at in ALL_TYPES {
             for (name, entry) in manifest.section(at) {
@@ -482,7 +482,7 @@ pub fn status(project_dir: &Path) -> Result<()> {
     }
 
     // Project items
-    let manifest = match Manifest::try_load(project_dir) {
+    let manifest = match Manifest::try_load(project_dir)? {
         Some(m) => m,
         None => {
             eprintln!("\n{}", color::dim("No rune.toml in this project."));
@@ -490,7 +490,7 @@ pub fn status(project_dir: &Path) -> Result<()> {
         }
     };
 
-    let lockfile = Lockfile::load(project_dir).unwrap_or_default();
+    let lockfile = Lockfile::load(project_dir)?;
     let mut current = 0u32;
     let mut drifted = 0u32;
     let mut missing = 0u32;

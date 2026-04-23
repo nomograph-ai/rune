@@ -42,7 +42,7 @@ pub fn add(
     }
 
     // Update manifest
-    let mut manifest = Manifest::try_load(project_dir).unwrap_or_default();
+    let mut manifest = Manifest::try_load(project_dir)?.unwrap_or_default();
     let entry = if registry_name.is_some() {
         SkillEntry {
             registry: Some(reg.name.clone()),
@@ -73,7 +73,7 @@ pub fn add(
     registry::copy_skill(&reg_path, &local_path)?;
 
     // Update lockfile
-    let mut lockfile = Lockfile::load(project_dir).unwrap_or_default();
+    let mut lockfile = Lockfile::load(project_dir)?;
     let hash = registry::skill_hash(&local_path).unwrap_or_default();
     let item_rel = if artifact_type == ArtifactType::Skill {
         registry::skill_path_relative(reg, name)
@@ -211,7 +211,7 @@ pub fn remove(project_dir: &Path, name: &str, artifact_type: Option<ArtifactType
     }
 
     // Clean lockfile entry
-    let mut lockfile = Lockfile::load(project_dir).unwrap_or_default();
+    let mut lockfile = Lockfile::load(project_dir)?;
     if lockfile.section_mut(at).remove(name).is_some() {
         lockfile.save(project_dir)?;
     }

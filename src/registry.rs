@@ -910,42 +910,43 @@ fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<()> {
 
 // ── Hash operations ─────────────────────────────────────────────────
 
-/// Hash all files in a skill for drift detection. Rejects symlinks.
-pub fn skill_hash(path: &Path) -> Option<String> {
+/// Hash all files in a skill for drift detection. Rejects symlinks and
+/// I/O errors with a hard `Err`. The previous `Option<String>` signature
+/// collapsed these into `None`, which callers then `.unwrap_or_default()`
+/// into an empty string — a valid-looking hash that silently broke
+/// drift detection. Bundled Enforcement: if we can't compute a hash, the
+/// caller must see why, not paper over it with a default.
+pub fn skill_hash(path: &Path) -> Result<String> {
     use sha2::{Digest, Sha256};
 
-    if path
+    let meta = path
         .symlink_metadata()
-        .map(|m| m.file_type().is_symlink())
-        .unwrap_or(false)
-    {
-        return None;
+        .with_context(|| format!("reading metadata for {}", path.display()))?;
+    if meta.file_type().is_symlink() {
+        anyhow::bail!("refusing to hash symlink: {}", path.display());
     }
 
-    if path.is_dir() {
-        let mut hasher = Sha256::new();
+    let mut hasher = Sha256::new();
+    if meta.is_dir() {
         let mut files = collect_files(path);
         files.sort();
         for file in files {
             let relative = file.strip_prefix(path).unwrap_or(&file);
             hasher.update(relative.to_string_lossy().as_bytes());
-            match std::fs::read(&file) {
-                Ok(content) => hasher.update(&content),
-                Err(e) => {
-                    eprintln!("  warning: cannot read {}: {e}", file.display());
-                    return None;
-                }
-            }
+            let content =
+                std::fs::read(&file).with_context(|| format!("reading {}", file.display()))?;
+            hasher.update(&content);
         }
-        Some(hex::encode(hasher.finalize()))
-    } else if path.is_file() {
-        let content = std::fs::read(path).ok()?;
-        let mut hasher = Sha256::new();
+    } else if meta.is_file() {
+        let content = std::fs::read(path).with_context(|| format!("reading {}", path.display()))?;
         hasher.update(&content);
-        Some(hex::encode(hasher.finalize()))
     } else {
-        None
+        anyhow::bail!(
+            "cannot hash {}: not a regular file or directory",
+            path.display()
+        );
     }
+    Ok(hex::encode(hasher.finalize()))
 }
 
 /// Collect all files recursively. Skips symlinks and dotfiles.
