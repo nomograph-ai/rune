@@ -24,10 +24,14 @@ pub fn validate_name(name: &str) -> Result<()> {
         anyhow::bail!("Invalid name: {name:?} (must not contain whitespace)");
     }
     if name.contains('/') || name.contains('\\') || name.contains("..") || name.contains('\0') {
-        anyhow::bail!("Invalid name: {name} (must not contain /, \\, .., or null bytes)");
+        anyhow::bail!(
+            "Invalid name: {name}. Use [a-zA-Z0-9_-]+ only (no slashes, dots, or null bytes)."
+        );
     }
     if name.starts_with('.') || name.starts_with('-') {
-        anyhow::bail!("Invalid name: {name} (must not start with . or -)");
+        anyhow::bail!(
+            "Invalid name: {name}. Use [a-zA-Z0-9_-]+ only (must not start with . or -)."
+        );
     }
     Ok(())
 }
@@ -130,7 +134,7 @@ pub fn ensure_registry(reg: &Registry) -> Result<PathBuf> {
     // Acquire lock before any git/download operations
     let _lock = lock_registry(reg)?;
 
-    if reg.source == "archive" {
+    if reg.source == crate::config::SourceKind::Archive {
         ensure_archive_registry(reg, &repo_dir)?;
     } else if repo_dir.exists() {
         match pull(&repo_dir, reg) {
@@ -704,10 +708,13 @@ pub fn materialize_artifact(
         return Ok(default_path);
     };
 
-    if reg.source == "archive" {
+    if reg.source == crate::config::SourceKind::Archive {
         anyhow::bail!(
-            "Version pin `@{ver}` on {name} is not supported for archive-type registry {} -- archive registries have no git history to resolve refs against",
-            reg.name
+            "Version pin `@{ver}` on {name} is not supported for archive-type \
+             registry {reg_name}. Fix: change `source = \"git\"` for {reg_name} \
+             in rune config.toml, or remove the `@{ver}` suffix from {name} in \
+             rune.toml.",
+            reg_name = reg.name
         );
     }
 
@@ -811,7 +818,13 @@ fn git_rev_parse(repo_dir: &Path, ref_spec: &str) -> Result<String> {
 fn sanitize_ref(ref_spec: &str) -> String {
     ref_spec
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '.' { c } else { '-' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '.' {
+                c
+            } else {
+                '-'
+            }
+        })
         .collect()
 }
 
@@ -902,44 +915,69 @@ fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<()> {
     Ok(())
 }
 
+// ── Cache metadata ──────────────────────────────────────────────────
+
+/// Parse a cache metadata filename back to the registry fs_name it belongs
+/// to. Cache dir siblings of a registry tree include:
+///
+///   .<fs_name>.lock              (file lock)
+///   .<fs_name>.etag              (archive ETag)
+///   .<fs_name>-headers.txt       (transient curl headers)
+///   .<fs_name>-archive.tar.gz    (in-progress download)
+///   .<fs_name>-extract           (in-progress extraction)
+///
+/// `rune clean` uses this to decide whether a metadata file belongs to a
+/// registry that is no longer configured. Pulled out into a named function
+/// so the test exercises the same implementation users do, not a copy.
+pub fn parse_cache_metadata_name(filename: &str) -> &str {
+    filename
+        .trim_start_matches('.')
+        .trim_end_matches(".lock")
+        .trim_end_matches(".etag")
+        .trim_end_matches("-headers.txt")
+        .trim_end_matches("-archive.tar.gz")
+        .trim_end_matches("-extract")
+}
+
 // ── Hash operations ─────────────────────────────────────────────────
 
-/// Hash all files in a skill for drift detection. Rejects symlinks.
-pub fn skill_hash(path: &Path) -> Option<String> {
+/// Hash all files in a skill for drift detection. Rejects symlinks and
+/// I/O errors with a hard `Err`. The previous `Option<String>` signature
+/// collapsed these into `None`, which callers then `.unwrap_or_default()`
+/// into an empty string — a valid-looking hash that silently broke
+/// drift detection. Bundled Enforcement: if we can't compute a hash, the
+/// caller must see why, not paper over it with a default.
+pub fn skill_hash(path: &Path) -> Result<String> {
     use sha2::{Digest, Sha256};
 
-    if path
+    let meta = path
         .symlink_metadata()
-        .map(|m| m.file_type().is_symlink())
-        .unwrap_or(false)
-    {
-        return None;
+        .with_context(|| format!("reading metadata for {}", path.display()))?;
+    if meta.file_type().is_symlink() {
+        anyhow::bail!("refusing to hash symlink: {}", path.display());
     }
 
-    if path.is_dir() {
-        let mut hasher = Sha256::new();
+    let mut hasher = Sha256::new();
+    if meta.is_dir() {
         let mut files = collect_files(path);
         files.sort();
         for file in files {
             let relative = file.strip_prefix(path).unwrap_or(&file);
             hasher.update(relative.to_string_lossy().as_bytes());
-            match std::fs::read(&file) {
-                Ok(content) => hasher.update(&content),
-                Err(e) => {
-                    eprintln!("  warning: cannot read {}: {e}", file.display());
-                    return None;
-                }
-            }
+            let content =
+                std::fs::read(&file).with_context(|| format!("reading {}", file.display()))?;
+            hasher.update(&content);
         }
-        Some(hex::encode(hasher.finalize()))
-    } else if path.is_file() {
-        let content = std::fs::read(path).ok()?;
-        let mut hasher = Sha256::new();
+    } else if meta.is_file() {
+        let content = std::fs::read(path).with_context(|| format!("reading {}", path.display()))?;
         hasher.update(&content);
-        Some(hex::encode(hasher.finalize()))
     } else {
-        None
+        anyhow::bail!(
+            "cannot hash {}: not a regular file or directory",
+            path.display()
+        );
     }
+    Ok(hex::encode(hasher.finalize()))
 }
 
 /// Collect all files recursively. Skips symlinks and dotfiles.

@@ -230,6 +230,9 @@ fn main() -> Result<()> {
                     status.colored(),
                     color::cyan(reg)
                 );
+                if let Some(hint) = status.hint(name) {
+                    println!("  {:<24} {}", "", color::dim(&hint));
+                }
             }
             if results
                 .iter()
