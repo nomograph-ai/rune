@@ -100,6 +100,7 @@ fn test_registry(name: &str, mock_url: &str) -> Registry {
         token_env: None,
         git_email: None,
         git_name: None,
+        aliases: Vec::new(),
     }
 }
 

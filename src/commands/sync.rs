@@ -125,7 +125,7 @@ pub fn sync(project_dir: &Path, force: bool) -> Result<u32> {
 
                     // Mark pedigree as modified for imported skills
                     if !dry_run && at == ArtifactType::Skill {
-                        let ped = Pedigree::from_skill(&local_path).unwrap_or_default();
+                        let ped = Pedigree::from_skill_or_warn(&local_path);
                         if ped.has_origin() && ped.modified != Some(true) {
                             let updated_ped = Pedigree {
                                 modified: Some(true),
@@ -295,7 +295,7 @@ fn generate_agents_md(project_dir: &Path, manifest: &Manifest) -> Result<()> {
         };
 
         let description = if skill_file.exists() {
-            let ped = Pedigree::from_skill(&skill_path).unwrap_or_default();
+            let ped = Pedigree::from_skill_or_warn(&skill_path);
             ped.description
                 .unwrap_or_else(|| format!("{skill_name} skill"))
         } else {
@@ -317,7 +317,7 @@ fn generate_agents_md(project_dir: &Path, manifest: &Manifest) -> Result<()> {
         let agent_file = agents_dir.join(format!("{agent_name}.md"));
 
         let description = if agent_file.exists() {
-            let ped = Pedigree::from_skill(&agent_file).unwrap_or_default();
+            let ped = Pedigree::from_skill_or_warn(&agent_file);
             ped.description
                 .unwrap_or_else(|| format!("{agent_name} agent"))
         } else {

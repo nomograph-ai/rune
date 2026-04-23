@@ -59,10 +59,10 @@ fn path_traversal_names_rejected() {
         "trailing ",
     ];
     for name in &attacks {
-        let result = rune::registry::validate_skill_name(name);
+        let result = rune::registry::validate_name(name);
         assert!(
             result.is_err(),
-            "SECURITY: validate_skill_name accepted malicious name: {name:?}"
+            "SECURITY: validate_name accepted malicious name: {name:?}"
         );
     }
 }
@@ -79,7 +79,7 @@ fn valid_skill_names_accepted() {
         "a",
     ];
     for name in &names {
-        let result = rune::registry::validate_skill_name(name);
+        let result = rune::registry::validate_name(name);
         assert!(result.is_ok(), "Rejected valid name: {name}");
     }
 }
@@ -135,7 +135,7 @@ fn collect_files_skips_symlinks() {
     fs::write(dir.join("SKILL.md"), "content").unwrap();
     unix_fs::symlink("/etc/passwd", dir.join("link")).unwrap();
 
-    let files = rune::registry::fs::collect_files_public(&dir);
+    let files = rune::registry::fs::collect_files(&dir);
     let names: Vec<String> = files
         .iter()
         .map(|f| f.file_name().unwrap().to_string_lossy().to_string())
@@ -158,7 +158,7 @@ fn collect_files_skips_dotfiles() {
     fs::write(dir.join(".git").join("config"), "secret").unwrap();
     fs::write(dir.join(".hidden"), "hidden").unwrap();
 
-    let files = rune::registry::fs::collect_files_public(&dir);
+    let files = rune::registry::fs::collect_files(&dir);
     let names: Vec<String> = files
         .iter()
         .map(|f| f.to_string_lossy().to_string())
@@ -355,8 +355,10 @@ fn list_skills_requires_skill_md() {
         token_env: None,
         git_email: None,
         git_name: None,
+        aliases: Vec::new(),
     };
-    let skills = rune::registry::list_skills(base, &reg).unwrap();
+    let skills =
+        rune::registry::list_artifacts(base, &reg, rune::manifest::ArtifactType::Skill).unwrap();
     assert_eq!(skills, vec!["valid-skill"]);
 }
 
@@ -382,8 +384,10 @@ fn list_skills_skips_symlink_dirs() {
         token_env: None,
         git_email: None,
         git_name: None,
+        aliases: Vec::new(),
     };
-    let skills = rune::registry::list_skills(base, &reg).unwrap();
+    let skills =
+        rune::registry::list_artifacts(base, &reg, rune::manifest::ArtifactType::Skill).unwrap();
     assert_eq!(skills, vec!["real"]);
 }
 
@@ -983,6 +987,7 @@ fn list_artifacts_typed_registry() {
         token_env: None,
         git_email: None,
         git_name: None,
+        aliases: Vec::new(),
     };
 
     let skills = rune::registry::list_artifacts(base, &reg, ArtifactType::Skill).unwrap();
@@ -1017,6 +1022,7 @@ fn list_artifacts_legacy_fallback() {
         token_env: None,
         git_email: None,
         git_name: None,
+        aliases: Vec::new(),
     };
 
     // Skills should be found via legacy fallback (root)
@@ -1042,6 +1048,7 @@ fn artifact_path_typed_vs_legacy() {
         token_env: None,
         git_email: None,
         git_name: None,
+        aliases: Vec::new(),
     };
 
     // With typed subdir: agents/
@@ -1107,15 +1114,15 @@ fn validate_name_works() {
     assert!(rune::registry::validate_name("my-agent").is_ok());
     assert!(rune::registry::validate_name("no-emdash").is_ok());
 
-    // Same validation rules as validate_skill_name
+    // Same validation rules as validate_name
     assert!(rune::registry::validate_name("../escape").is_err());
     assert!(rune::registry::validate_name(".hidden").is_err());
     assert!(rune::registry::validate_name("").is_err());
     assert!(rune::registry::validate_name("-flag").is_err());
 
     // Alias still works
-    assert!(rune::registry::validate_skill_name("tidy").is_ok());
-    assert!(rune::registry::validate_skill_name("../escape").is_err());
+    assert!(rune::registry::validate_name("tidy").is_ok());
+    assert!(rune::registry::validate_name("../escape").is_err());
 }
 
 // ── Skill version (@version suffix + table form) ───────────────────────
@@ -1199,6 +1206,64 @@ fn skill_entry_empty_version_keeps_registry() {
 }
 
 #[test]
+fn hook_script_covers_all_artifact_types() {
+    // Derivation obligation: the hook script's file-path matcher must
+    // cover every ArtifactType. Adding a fourth type without updating
+    // resources/hook.sh would silently leak its file events to no hook
+    // handler. This test links ALL_TYPES (the spec) to the hook script
+    // (the derived artifact) so drift between them is a CI failure.
+    let hook = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/resources/hook.sh"))
+        .expect("hook script must be present for testing");
+    for at in rune::manifest::ALL_TYPES {
+        let dir = at.default_dir();
+        assert!(
+            hook.contains(dir),
+            "hook.sh is missing a file-path match for {} (expected substring {dir:?}). \
+             Add the case arm to resources/hook.sh, or remove {} from ArtifactType.",
+            at.singular(),
+            at.singular()
+        );
+    }
+}
+
+#[test]
+fn registry_lookup_matches_by_alias() {
+    // Backward compatibility: a registry that was renamed (e.g. from a
+    // short form to a qualified form) must still resolve lookups
+    // against the old name when it's declared as an alias.
+    let config = rune::config::Config {
+        registry: vec![rune::config::Registry {
+            name: "owner/canonical".to_string(),
+            url: "https://example.test/owner/canonical.git".to_string(),
+            path: None,
+            branch: "main".to_string(),
+            readonly: false,
+            source: rune::config::SourceKind::Git,
+            token_env: None,
+            git_email: None,
+            git_name: None,
+            aliases: vec!["canonical".to_string()],
+        }],
+    };
+
+    let canonical = config
+        .registry("owner/canonical")
+        .expect("canonical lookup");
+    assert_eq!(canonical.name, "owner/canonical");
+
+    let alias = config.registry("canonical").expect("alias lookup");
+    assert_eq!(
+        alias.name, "owner/canonical",
+        "alias resolves to canonical"
+    );
+
+    assert!(
+        config.registry("other").is_none(),
+        "unrelated name must not match"
+    );
+}
+
+#[test]
 fn resolve_artifact_handles_slash_in_registry_name() {
     // Regression test for v0.8.1-era bug: Config::resolve_artifact must use
     // reg.fs_name() (replaces `/` with `--`) when constructing the cache path,
@@ -1223,6 +1288,7 @@ fn resolve_artifact_handles_slash_in_registry_name() {
             token_env: None,
             git_email: None,
             git_name: None,
+            aliases: Vec::new(),
         }],
     };
 

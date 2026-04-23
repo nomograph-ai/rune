@@ -67,7 +67,7 @@ pub fn browse(registry_name: &str, type_filter: Option<ArtifactType>) -> Result<
 
         for item in &items {
             let path = registry::artifact_path(&repo_dir, reg, item, *at);
-            let pedigree = Pedigree::from_skill(&path).unwrap_or_default();
+            let pedigree = Pedigree::from_skill_or_warn(&path);
             let desc = pedigree.description.unwrap_or_else(|| "-".to_string());
             let desc_short = if desc.chars().count() > 70 {
                 let truncated: String = desc.chars().take(67).collect();
@@ -91,7 +91,7 @@ pub fn browse(registry_name: &str, type_filter: Option<ArtifactType>) -> Result<
 pub fn import(skill_ref: &str, target_name: Option<&str>) -> Result<()> {
     let config = Config::load()?;
     let (skill_name, source_name) = parse_skill_ref(skill_ref)?;
-    registry::validate_skill_name(skill_name)?;
+    registry::validate_name(skill_name)?;
 
     // Resolve source registry
     let source_reg = config
@@ -204,11 +204,12 @@ pub fn upstream(quiet: bool) -> Result<()> {
         }
 
         let repo_dir = registry::ensure_registry(reg)?;
-        let skills = registry::list_skills(&repo_dir, reg)?;
+        let skills =
+            registry::list_artifacts(&repo_dir, reg, crate::manifest::ArtifactType::Skill)?;
 
         for skill_name in &skills {
             let skill_path = registry::skill_path(&repo_dir, reg, skill_name);
-            let ped = Pedigree::from_skill(&skill_path).unwrap_or_default();
+            let ped = Pedigree::from_skill_or_warn(&skill_path);
 
             if !ped.has_origin() {
                 continue; // Not imported, skip
@@ -288,7 +289,7 @@ pub fn upstream(quiet: bool) -> Result<()> {
 
 /// Show diff between imported skill and upstream version.
 pub fn diff(skill_name: &str) -> Result<()> {
-    registry::validate_skill_name(skill_name)?;
+    registry::validate_name(skill_name)?;
     let config = Config::load()?;
 
     // Find the skill in a writable registry
@@ -386,7 +387,7 @@ pub fn diff(skill_name: &str) -> Result<()> {
 
 /// Pull upstream changes for an imported skill.
 pub fn update(skill_name: &str, force: bool) -> Result<()> {
-    registry::validate_skill_name(skill_name)?;
+    registry::validate_name(skill_name)?;
     let config = Config::load()?;
 
     let (reg, repo_dir) = find_imported_skill(&config, skill_name)?;
