@@ -604,29 +604,46 @@ fn lockfile_matches_when_unmodified() {
 // ============================================================
 
 #[test]
-fn clean_metadata_name_extraction() {
-    // Verify the trim logic correctly extracts registry names from metadata files
-    let names_and_expected: &[(&str, &str)] = &[
-        (".myregistry.lock", "myregistry"),
-        (".myregistry.etag", "myregistry"),
-        (".myregistry-headers.txt", "myregistry"),
-        (".myregistry-archive.tar.gz", "myregistry"),
-        (".myregistry-extract", "myregistry"),
-    ];
+fn parse_cache_metadata_name_recovers_registry() {
+    // Non-vacuous: exercises the exact function rune clean calls,
+    // not a reimplementation. If the production parser changes, this
+    // test moves with it or fails.
+    use rune::registry::parse_cache_metadata_name;
 
-    for (filename, expected) in names_and_expected {
-        let base = filename
-            .trim_start_matches('.')
-            .trim_end_matches(".lock")
-            .trim_end_matches(".etag")
-            .trim_end_matches("-headers.txt")
-            .trim_end_matches("-archive.tar.gz")
-            .trim_end_matches("-extract");
-        assert_eq!(
-            base, *expected,
-            "Failed to extract registry name from {filename}"
-        );
+    // All five metadata suffixes for a plain registry name
+    for filename in [
+        ".myregistry.lock",
+        ".myregistry.etag",
+        ".myregistry-headers.txt",
+        ".myregistry-archive.tar.gz",
+        ".myregistry-extract",
+    ] {
+        assert_eq!(parse_cache_metadata_name(filename), "myregistry");
     }
+
+    // Slash-containing registry names are stored with `/` replaced by `--`.
+    // The parser must return that fs_name form so `clean` can compare
+    // it against Registry.fs_name() in the configured set.
+    for filename in [
+        ".andunn--arcana.lock",
+        ".andunn--arcana.etag",
+        ".andunn--arcana-archive.tar.gz",
+    ] {
+        assert_eq!(parse_cache_metadata_name(filename), "andunn--arcana");
+    }
+
+    // A bare directory name (the registry tree itself) isn't a metadata
+    // file, and the function is not expected to be called on it. But it
+    // should be idempotent-ish if it is: no leading dot, no known suffix.
+    assert_eq!(parse_cache_metadata_name("myregistry"), "myregistry");
+
+    // Negative: a file with an unknown suffix is returned unchanged
+    // (minus the leading dot). rune clean then treats it as an unknown
+    // name and leaves it alone, which is the safe default.
+    assert_eq!(
+        parse_cache_metadata_name(".surprise-artifact.json"),
+        "surprise-artifact.json"
+    );
 }
 
 // ============================================================

@@ -276,13 +276,7 @@ pub fn clean() -> Result<()> {
         // Skip lock/etag/header files -- they'll be cleaned with their registry
         if name.starts_with('.') {
             // Check if it's a stale metadata file for a removed registry
-            let base = name
-                .trim_start_matches('.')
-                .trim_end_matches(".lock")
-                .trim_end_matches(".etag")
-                .trim_end_matches("-headers.txt")
-                .trim_end_matches("-archive.tar.gz")
-                .trim_end_matches("-extract");
+            let base = registry::parse_cache_metadata_name(&name);
             if !configured.contains(base) {
                 if dry_run {
                     eprintln!("  {} {}", color::yellow("would remove"), name);
