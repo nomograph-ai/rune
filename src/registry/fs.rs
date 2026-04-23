@@ -84,14 +84,11 @@ pub fn skill_hash(path: &Path) -> Result<String> {
     Ok(hex::encode(hasher.finalize()))
 }
 
-/// Collect all files recursively. Skips symlinks and dotfiles.
-/// Public for integration tests.
-#[allow(dead_code)]
-pub fn collect_files_public(dir: &Path) -> Vec<PathBuf> {
-    collect_files(dir)
-}
-
-pub(super) fn collect_files(dir: &Path) -> Vec<PathBuf> {
+/// Collect all files recursively under `dir`. Skips symlinks and
+/// dotfiles. The single directory walker used by hash, archive-tree
+/// hashing, audit/count_lines, and integration tests — replacing the
+/// three near-identical copies that lived across modules pre-v0.12.
+pub fn collect_files(dir: &Path) -> Vec<PathBuf> {
     let mut files = Vec::new();
     let entries = match std::fs::read_dir(dir) {
         Ok(e) => e,

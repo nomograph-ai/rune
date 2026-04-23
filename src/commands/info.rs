@@ -592,11 +592,11 @@ pub fn status(project_dir: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Count lines in a skill (all .md + .sh + .txt files).
+/// Count lines in a skill (all .md + .sh + .txt + .toml files).
 fn count_lines(path: &Path) -> usize {
     if path.is_dir() {
         let mut total = 0;
-        for entry in walkdir_simple(path) {
+        for entry in registry::fs::collect_files(path) {
             let ext = entry.extension().and_then(|e| e.to_str()).unwrap_or("");
             if matches!(ext, "md" | "sh" | "txt" | "toml") {
                 total += std::fs::read_to_string(&entry)
@@ -610,33 +610,4 @@ fn count_lines(path: &Path) -> usize {
             .map(|s| s.lines().count())
             .unwrap_or(0)
     }
-}
-
-/// Simple recursive directory walk, skipping dotfiles and symlinks.
-fn walkdir_simple(dir: &Path) -> Vec<std::path::PathBuf> {
-    let mut files = Vec::new();
-    let entries = match std::fs::read_dir(dir) {
-        Ok(e) => e,
-        Err(_) => return files,
-    };
-    for entry in entries.flatten() {
-        let name = entry.file_name();
-        if name.to_string_lossy().starts_with('.') {
-            continue;
-        }
-        let ft = match entry.file_type() {
-            Ok(ft) => ft,
-            Err(_) => continue,
-        };
-        if ft.is_symlink() {
-            continue;
-        }
-        let path = entry.path();
-        if ft.is_dir() {
-            files.extend(walkdir_simple(&path));
-        } else {
-            files.push(path);
-        }
-    }
-    files
 }
