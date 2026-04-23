@@ -16,6 +16,15 @@ file-size-gate:
   script:
     - ./scripts/check-file-sizes.sh
 
+shellcheck:
+  stage: test
+  tags: [storr]
+  needs: []
+  script:
+    - command -v shellcheck >/dev/null 2>&1 || (apt-get update -qq && apt-get install -y -qq shellcheck)
+    - shellcheck -s bash resources/hook.sh
+    - shellcheck -s sh scripts/check-file-sizes.sh
+
 # Nudge the kits registry to re-sense on tag push (kit-registry@v3.1.0+).
 notify-kits:
   stage: notify
