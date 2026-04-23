@@ -67,7 +67,7 @@ pub fn browse(registry_name: &str, type_filter: Option<ArtifactType>) -> Result<
 
         for item in &items {
             let path = registry::artifact_path(&repo_dir, reg, item, *at);
-            let pedigree = Pedigree::from_skill(&path).unwrap_or_default();
+            let pedigree = Pedigree::from_skill_or_warn(&path);
             let desc = pedigree.description.unwrap_or_else(|| "-".to_string());
             let desc_short = if desc.chars().count() > 70 {
                 let truncated: String = desc.chars().take(67).collect();
@@ -209,7 +209,7 @@ pub fn upstream(quiet: bool) -> Result<()> {
 
         for skill_name in &skills {
             let skill_path = registry::skill_path(&repo_dir, reg, skill_name);
-            let ped = Pedigree::from_skill(&skill_path).unwrap_or_default();
+            let ped = Pedigree::from_skill_or_warn(&skill_path);
 
             if !ped.has_origin() {
                 continue; // Not imported, skip
