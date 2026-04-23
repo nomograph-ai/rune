@@ -5,16 +5,24 @@ use crate::config::Config;
 use crate::manifest::{ArtifactType, SkillEntry};
 use crate::registry;
 
+mod audit;
 mod check;
+mod clean;
 mod crud;
-mod info;
+mod doctor;
+mod ls;
+mod status;
 mod sync;
 mod upstream;
 
 // Re-export all public functions so callers keep using `commands::foo`
+pub use audit::audit;
 pub use check::check;
+pub use clean::clean;
 pub use crud::{add_many, prune, push, remove};
-pub use info::{audit, clean, doctor, ls, ls_registry, status};
+pub use doctor::doctor;
+pub use ls::{ls, ls_registry};
+pub use status::status;
 pub use sync::sync;
 pub use upstream::{browse, diff, import, update, upstream};
 
