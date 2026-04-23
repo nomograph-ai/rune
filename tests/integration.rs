@@ -1252,10 +1252,7 @@ fn registry_lookup_matches_by_alias() {
     assert_eq!(canonical.name, "owner/canonical");
 
     let alias = config.registry("canonical").expect("alias lookup");
-    assert_eq!(
-        alias.name, "owner/canonical",
-        "alias resolves to canonical"
-    );
+    assert_eq!(alias.name, "owner/canonical", "alias resolves to canonical");
 
     assert!(
         config.registry("other").is_none(),
