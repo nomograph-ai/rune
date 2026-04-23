@@ -16,7 +16,7 @@ use crate::registry;
 pub fn sync(project_dir: &Path, force: bool) -> Result<u32> {
     let config = Config::load()?;
     let manifest = Manifest::load(project_dir)?;
-    let mut lockfile = Lockfile::load(project_dir).unwrap_or_default();
+    let mut lockfile = Lockfile::load(project_dir)?;
     let dry_run = registry::is_dry_run();
 
     let mut count = 0;
@@ -71,9 +71,9 @@ pub fn sync(project_dir: &Path, force: bool) -> Result<u32> {
                 artifact_dir.join(format!("{name}.md"))
             };
 
-            let reg_hash = registry::skill_hash(&reg_path);
-            let local_hash = if local_path.exists() {
-                registry::skill_hash(&local_path)
+            let reg_hash = registry::skill_hash(&reg_path)?;
+            let local_hash: Option<String> = if local_path.exists() {
+                Some(registry::skill_hash(&local_path)?)
             } else {
                 None
             };
@@ -85,7 +85,7 @@ pub fn sync(project_dir: &Path, force: bool) -> Result<u32> {
                 false
             };
 
-            if reg_hash != local_hash {
+            if local_hash.as_deref() != Some(reg_hash.as_str()) {
                 if locally_modified && !force {
                     // Local was changed since last sync -- don't overwrite
                     eprintln!(
@@ -177,7 +177,7 @@ pub fn sync(project_dir: &Path, force: bool) -> Result<u32> {
 
         // Bundled enforcement: verify state after sync.
         // Re-load lockfile (just saved) and check all items.
-        let lockfile = Lockfile::load(project_dir).unwrap_or_default();
+        let lockfile = Lockfile::load(project_dir)?;
         let mut drifted = 0u32;
         for at in ALL_TYPES {
             for (name, entry) in manifest.section(at) {

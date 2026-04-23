@@ -186,10 +186,10 @@ fn skill_hash_deterministic() {
     fs::write(dir.join("SKILL.md"), "---\nname: test\n---\n").unwrap();
     fs::write(dir.join("extra.md"), "extra content").unwrap();
 
-    let hash1 = rune::registry::skill_hash(&dir);
-    let hash2 = rune::registry::skill_hash(&dir);
+    let hash1 = rune::registry::skill_hash(&dir).expect("hash ok");
+    let hash2 = rune::registry::skill_hash(&dir).expect("hash ok");
     assert_eq!(hash1, hash2, "Hash should be deterministic");
-    assert!(hash1.is_some());
+    assert!(!hash1.is_empty());
 }
 
 #[test]
@@ -199,23 +199,23 @@ fn skill_hash_differs_on_content_change() {
     fs::create_dir_all(&dir).unwrap();
     fs::write(dir.join("SKILL.md"), "version 1").unwrap();
 
-    let hash1 = rune::registry::skill_hash(&dir);
+    let hash1 = rune::registry::skill_hash(&dir).expect("hash ok");
 
     fs::write(dir.join("SKILL.md"), "version 2").unwrap();
-    let hash2 = rune::registry::skill_hash(&dir);
+    let hash2 = rune::registry::skill_hash(&dir).expect("hash ok");
 
     assert_ne!(hash1, hash2, "Hash should change when content changes");
 }
 
 #[test]
-fn skill_hash_returns_none_for_symlink_file() {
+fn skill_hash_errors_for_symlink_file() {
     let tmp = tempfile::tempdir().unwrap();
     unix_fs::symlink("/etc/passwd", tmp.path().join("link.md")).unwrap();
 
-    let hash = rune::registry::skill_hash(&tmp.path().join("link.md"));
+    let result = rune::registry::skill_hash(&tmp.path().join("link.md"));
     assert!(
-        hash.is_none(),
-        "SECURITY: skill_hash should return None for symlinks"
+        result.is_err(),
+        "SECURITY: skill_hash must reject symlinks with an error, not silently"
     );
 }
 
@@ -560,11 +560,10 @@ fn lockfile_detects_local_modification() {
     );
 
     // The local hash should NOT match the lockfile hash
-    let local_hash = rune::registry::skill_hash(&skills_dir.join("test-skill"));
+    let local_hash = rune::registry::skill_hash(&skills_dir.join("test-skill")).expect("hash ok");
     let locked = lf.skills.get("test-skill").unwrap();
     assert_ne!(
-        local_hash.as_deref(),
-        Some(locked.hash.as_str()),
+        local_hash, locked.hash,
         "Local hash should differ from lockfile (skill was modified)"
     );
 }

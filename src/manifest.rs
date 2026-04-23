@@ -187,11 +187,26 @@ impl Manifest {
         Ok(manifest)
     }
 
-    /// Try to load manifest, returning None if it doesn't exist.
-    pub fn try_load(project_dir: &Path) -> Option<Self> {
+    /// Try to load manifest. Distinguishes three cases:
+    /// - `Ok(None)` — manifest file does not exist yet (pre-init project)
+    /// - `Ok(Some(m))` — manifest loaded and parsed
+    /// - `Err(e)` — file exists but is unreadable or malformed
+    ///
+    /// Prior versions collapsed the latter two into `None`, hiding
+    /// hand-edit corruption behind silent-default behavior. Bundled
+    /// Enforcement: malformed config must surface, not default to empty.
+    pub fn try_load(project_dir: &Path) -> Result<Option<Self>> {
         let path = Self::path(project_dir);
-        let content = std::fs::read_to_string(path).ok()?;
-        toml::from_str(&content).ok()
+        let content = match std::fs::read_to_string(&path) {
+            Ok(c) => c,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(e) => {
+                return Err(e).with_context(|| format!("Failed to read {}", path.display()));
+            }
+        };
+        let manifest: Manifest = toml::from_str(&content)
+            .with_context(|| format!("Failed to parse {}", path.display()))?;
+        Ok(Some(manifest))
     }
 
     pub fn path(project_dir: &Path) -> PathBuf {
