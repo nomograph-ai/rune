@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.14.0 (2026-04-23)
+
+### Added
+
+- **`rune skill`** subcommand. Prints a self-documenting reference —
+  concepts, lifecycle, critical rules, when-to-use, gotchas — to
+  stdout. Content lives in `resources/skill.md` (shellcheck-lintable,
+  editable as a static markdown file) and is baked into the binary
+  via `include_str!`. Designed to feed an agent's skill listing so the
+  LLM has operating context (including the "registry push is
+  authoritative, not git commit" rule) before touching rune.
+
 ## v0.13.0 (2026-04-23)
 
 Drift-detection follow-up to v0.12's alias fix. Two commits: proactive
