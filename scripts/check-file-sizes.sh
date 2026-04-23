@@ -20,7 +20,9 @@ is_waived() {
 }
 
 violations=""
-for f in $(find src tests -name '*.rs' -type f 2>/dev/null); do
+# Iterate via find -exec-style while loop so filenames with spaces or
+# newlines are handled correctly (shellcheck SC2044).
+while IFS= read -r f; do
     if is_waived "$f"; then
         continue
     fi
@@ -28,7 +30,9 @@ for f in $(find src tests -name '*.rs' -type f 2>/dev/null); do
     if [ "$lines" -gt "$MAX_LINES" ]; then
         violations="${violations}  ${f}: ${lines} lines\n"
     fi
-done
+done <<EOF
+$(find src tests -name '*.rs' -type f 2>/dev/null)
+EOF
 
 if [ -n "$violations" ]; then
     printf '%s\n' "file-size gate: one or more .rs files exceed ${MAX_LINES} lines."

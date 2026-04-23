@@ -156,49 +156,9 @@ pub fn init(project_dir: &Path) -> Result<()> {
 }
 
 /// The hook script installed to ~/.config/rune/hook.sh.
-/// Reads Claude's PostToolUse JSON from stdin, checks if the file
-/// is a skill file, and runs rune check if so.
-const HOOK_SCRIPT: &str = r#"#!/bin/bash
-set -e
-
-INPUT=$(cat)
-FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty')
-
-# Only act on .claude/skills/, .claude/agents/, or .claude/rules/ .md files
-MATCH=0
-if [[ "$FILE_PATH" == *".claude/skills/"* ]] && [[ "$FILE_PATH" == *.md ]]; then
-    MATCH=1
-elif [[ "$FILE_PATH" == *".claude/agents/"* ]] && [[ "$FILE_PATH" == *.md ]]; then
-    MATCH=1
-elif [[ "$FILE_PATH" == *".claude/rules/"* ]] && [[ "$FILE_PATH" == *.md ]]; then
-    MATCH=1
-fi
-
-if [[ "$MATCH" -eq 0 ]]; then
-    exit 0
-fi
-
-# Find project root (walk up to find .claude/rune.toml)
-DIR=$(dirname "$FILE_PATH")
-while [[ "$DIR" != "/" ]]; do
-    if [[ -f "$DIR/.claude/rune.toml" ]] || [[ -f "$DIR/rune.toml" ]]; then
-        break
-    fi
-    DIR=$(dirname "$DIR")
-done
-
-if [[ ! -f "$DIR/.claude/rune.toml" ]]; then
-    exit 0
-fi
-
-# Run rune check on the specific file
-OUTPUT=$(rune check --file "$FILE_PATH" --project "$DIR" 2>&1) || true
-
-if [[ -n "$OUTPUT" ]] && [[ "$OUTPUT" == *"DRIFTED"* ]]; then
-    # Surface to Claude via additionalContext
-    ESCAPED=$(echo "$OUTPUT" | jq -Rs .)
-    printf '{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":%s}}' "$ESCAPED"
-fi
-
-exit 0
-"#;
+///
+/// Lives in resources/hook.sh so it can be shellcheck'd in CI and read
+/// as a real file during development. include_str! bakes it into the
+/// binary at compile time, so `rune setup` still writes a self-contained
+/// hook without needing the source tree.
+const HOOK_SCRIPT: &str = include_str!("../resources/hook.sh");
