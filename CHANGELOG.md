@@ -2,9 +2,32 @@
 
 ## v0.12.0 (2026-04-23)
 
-Stabilization pass. Five commits cleaning up structural debt that
-survived v0.10 and v0.11. Pure quality; no behavior change for
-end-users.
+Stabilization pass plus one user-visible fix. Six commits cleaning up
+structural debt from v0.10 / v0.11 and a backward-compatibility
+mechanism for renamed registries.
+
+### Fixed
+
+- **Registry rename now non-breaking via aliases.** After renaming a
+  registry in `config.toml`, every project still referencing the old
+  name in its `rune.toml` or `rune.lock` failed with `Unknown
+  registry: <old-name>` on `check`, `sync`, and `push`, with no
+  automatic reconciliation path. Affected v0.9.0 through v0.11.0.
+
+  `Registry` now supports an optional `aliases` list:
+
+      [[registry]]
+      name = "canonical-name"
+      aliases = ["old-name"]
+      url = "..."
+
+  `Config::registry(name)` checks the canonical name first, then falls
+  back to any alias. Lock and manifest writes always use the canonical
+  name, so projects self-migrate on their next sync.
+
+  The `Unknown registry` error was also rewritten to name the three
+  fixes (rename, add an alias, or edit the manifest) per the
+  Prescriptive Failure principle.
 
 ### Changed
 

@@ -355,6 +355,7 @@ fn list_skills_requires_skill_md() {
         token_env: None,
         git_email: None,
         git_name: None,
+        aliases: Vec::new(),
     };
     let skills =
         rune::registry::list_artifacts(base, &reg, rune::manifest::ArtifactType::Skill).unwrap();
@@ -383,6 +384,7 @@ fn list_skills_skips_symlink_dirs() {
         token_env: None,
         git_email: None,
         git_name: None,
+        aliases: Vec::new(),
     };
     let skills =
         rune::registry::list_artifacts(base, &reg, rune::manifest::ArtifactType::Skill).unwrap();
@@ -985,6 +987,7 @@ fn list_artifacts_typed_registry() {
         token_env: None,
         git_email: None,
         git_name: None,
+        aliases: Vec::new(),
     };
 
     let skills = rune::registry::list_artifacts(base, &reg, ArtifactType::Skill).unwrap();
@@ -1019,6 +1022,7 @@ fn list_artifacts_legacy_fallback() {
         token_env: None,
         git_email: None,
         git_name: None,
+        aliases: Vec::new(),
     };
 
     // Skills should be found via legacy fallback (root)
@@ -1044,6 +1048,7 @@ fn artifact_path_typed_vs_legacy() {
         token_env: None,
         git_email: None,
         git_name: None,
+        aliases: Vec::new(),
     };
 
     // With typed subdir: agents/
@@ -1222,6 +1227,43 @@ fn hook_script_covers_all_artifact_types() {
 }
 
 #[test]
+fn registry_lookup_matches_by_alias() {
+    // Backward compatibility: a registry that was renamed (e.g. from a
+    // short form to a qualified form) must still resolve lookups
+    // against the old name when it's declared as an alias.
+    let config = rune::config::Config {
+        registry: vec![rune::config::Registry {
+            name: "owner/canonical".to_string(),
+            url: "https://example.test/owner/canonical.git".to_string(),
+            path: None,
+            branch: "main".to_string(),
+            readonly: false,
+            source: rune::config::SourceKind::Git,
+            token_env: None,
+            git_email: None,
+            git_name: None,
+            aliases: vec!["canonical".to_string()],
+        }],
+    };
+
+    let canonical = config
+        .registry("owner/canonical")
+        .expect("canonical lookup");
+    assert_eq!(canonical.name, "owner/canonical");
+
+    let alias = config.registry("canonical").expect("alias lookup");
+    assert_eq!(
+        alias.name, "owner/canonical",
+        "alias resolves to canonical"
+    );
+
+    assert!(
+        config.registry("other").is_none(),
+        "unrelated name must not match"
+    );
+}
+
+#[test]
 fn resolve_artifact_handles_slash_in_registry_name() {
     // Regression test for v0.8.1-era bug: Config::resolve_artifact must use
     // reg.fs_name() (replaces `/` with `--`) when constructing the cache path,
@@ -1246,6 +1288,7 @@ fn resolve_artifact_handles_slash_in_registry_name() {
             token_env: None,
             git_email: None,
             git_name: None,
+            aliases: Vec::new(),
         }],
     };
 

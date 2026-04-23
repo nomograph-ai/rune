@@ -105,9 +105,14 @@ fn resolve_registry_typed<'a>(
     artifact_type: ArtifactType,
 ) -> Result<&'a crate::config::Registry> {
     if let Some(ref pinned) = entry.registry {
-        config
-            .registry(pinned)
-            .with_context(|| format!("Unknown registry: {pinned}"))
+        config.registry(pinned).with_context(|| {
+            format!(
+                "Unknown registry: {pinned}. Fix: rename the registry in \
+                 ~/.config/rune/config.toml, add `aliases = [\"{pinned}\"]` to the correct \
+                 registry entry (backward-compatible), or edit .claude/rune.toml to use a \
+                 configured registry name."
+            )
+        })
     } else {
         let cache_dir = Config::cache_dir()?;
         // Ensure all registries are cloned so we can search them
