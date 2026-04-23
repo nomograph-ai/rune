@@ -1,5 +1,82 @@
 # Changelog
 
+## v0.10.0 (2026-04-23)
+
+Discipline pass. Eight commits that tighten rune's LLM-correctness
+signal (Bundled Enforcement, Prescriptive Failure, Vacuity Detection)
+without restructuring the codebase. v0.11.0 will do the structural
+splits; shipping discipline first gives the splits a stronger test
+suite to land under.
+
+### Fixed
+
+- `Config::resolve_artifact` now uses `reg.fs_name()` for the cache
+  path lookup. Previously, registries whose display name contained `/`
+  (e.g. `andunn/arcana`) silently returned `None` from resolve because
+  the cache was stored at `andunn--arcana/` but the lookup joined on
+  the raw name. v0.8.1 fixed this everywhere else; this site was missed.
+  Regression test included.
+
+### Changed
+
+- `Registry.source` is now an enum `SourceKind { Git, Archive }` instead
+  of a free-form string. Existing `source = "git"` and `source = "archive"`
+  TOML values continue to parse (serde lowercases on (de)serialize).
+  Typos are now compile errors, not silent misroutes.
+
+- Parsers return `Result` instead of swallowing errors into defaults:
+  - `registry::skill_hash(path) -> Result<String>` (was `Option<String>`).
+    Symlink / IO failure / not-a-regular-path become hard errors instead
+    of empty-string hashes. This closes a drift-detection hole where a
+    corrupt skill file would hash to `""` and compare equal to another
+    corrupt file (or a lockfile default).
+  - `Manifest::try_load -> Result<Option<Self>>` (was `Option<Self>`).
+    Missing file is still `Ok(None)`; malformed TOML now errors with a
+    path-qualified message instead of masquerading as a pre-init project.
+  - `Lockfile::load` callers switched from `.unwrap_or_default()` to
+    `?`. Missing lockfile still defaults cleanly; malformed lockfile
+    surfaces instead of silently erasing itself on next write.
+
+- Error messages rewritten with next-action hints (Prescriptive Failure):
+  `rune add <unknown>` now names the `rune browse` command; `rune push`
+  of a skill not in the manifest names the `rune add` command with the
+  right flags; `validate_name` explains the allowed character class
+  (`[a-zA-Z0-9_-]+`) instead of enumerating disallowed characters.
+
+- `SkillStatus::hint(name)` adds a dim `→ run: rune push X` /
+  `→ run: rune sync` line under each non-Current line in `rune check`
+  output. Users no longer need to remember which command applies to
+  which drift direction.
+
+### Added
+
+- **Integrity check on pinned skills.** When a skill is pinned to
+  `@v1.2.0` (tag, branch, or commit) and the lockfile already has a
+  recorded `registry_commit` for it, the next `rune sync` resolves
+  the pin again and compares against the lockfile. If the resolved
+  SHA has moved (force-pushed tag, rewritten history), sync bails
+  with a prescriptive error naming both SHAs and the two recovery
+  paths. Fixes the npm-integrity class of threat for pinned entries.
+
+- **File size CI gate.** Any `.rs` file over 500 lines fails the
+  `file-size-gate` job in the test stage. Existing offenders (four
+  files totaling ~3400 lines) are waived in `.file-size-waiver`
+  pending the v0.11 structural split. New files that regress get
+  blocked at CI.
+
+- **Hook script extracted** to `resources/hook.sh` and baked in via
+  `include_str!`. Enables shellcheck lint coverage in CI. No runtime
+  change — `rune setup` still writes a self-contained script.
+
+- **Shellcheck CI gate** covering `resources/hook.sh` (bash) and
+  `scripts/check-file-sizes.sh` (POSIX sh).
+
+- `registry::parse_cache_metadata_name(&str) -> &str` extracted from
+  an inline closure in `rune clean`. The prior test duplicated that
+  closure, so it verified test code not production code. The new test
+  calls the same function users do, with added coverage for fs_name
+  (`--`-substituted) registry names and negative cases.
+
 ## v0.9.0 (2026-04-21)
 
 ### Added

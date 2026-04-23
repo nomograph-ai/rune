@@ -16,7 +16,7 @@ use crate::registry;
 pub fn sync(project_dir: &Path, force: bool) -> Result<u32> {
     let config = Config::load()?;
     let manifest = Manifest::load(project_dir)?;
-    let mut lockfile = Lockfile::load(project_dir).unwrap_or_default();
+    let mut lockfile = Lockfile::load(project_dir)?;
     let dry_run = registry::is_dry_run();
 
     let mut count = 0;
@@ -46,18 +46,42 @@ pub fn sync(project_dir: &Path, force: bool) -> Result<u32> {
             };
 
             let repo_dir = registry::ensure_registry(reg)?;
-            let reg_path = match registry::materialize_artifact(
-                reg,
-                name,
-                at,
-                entry.version.as_deref(),
-            ) {
-                Ok(p) => p,
-                Err(e) => {
-                    eprintln!("  {name}: {e}");
-                    continue;
+
+            // Integrity check for pinned skills: if a version is pinned and
+            // we have a prior lockfile entry, the resolved SHA must not have
+            // moved. Tags that get force-pushed upstream are the only way
+            // this can change — a legitimate re-pin goes through manifest
+            // edit + fresh lockfile. Hard stop here; pinned entries must
+            // stay reproducible.
+            if entry.version.is_some()
+                && let Some(locked) = lockfile.section(at).get(name)
+                && let Some(ref locked_sha) = locked.registry_commit
+                && let Ok(current_full) = registry::resolved_commit(reg, entry.version.as_deref())
+            {
+                let current_short = current_full.get(..7).unwrap_or(&current_full);
+                if current_short != locked_sha {
+                    anyhow::bail!(
+                        "integrity violation: {name} is pinned to {pin} which \
+                         previously resolved to {locked_sha} (lockfile) but now \
+                         resolves to {current_short} (registry {reg_name}). \
+                         Upstream tag appears to have been rewritten. \
+                         Investigate, then if safe: bump the pin in rune.toml \
+                         to the new ref, or delete the {name} entry from \
+                         rune.lock to accept the new SHA.",
+                        pin = entry.version.as_deref().unwrap_or("?"),
+                        reg_name = reg.name,
+                    );
                 }
-            };
+            }
+
+            let reg_path =
+                match registry::materialize_artifact(reg, name, at, entry.version.as_deref()) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        eprintln!("  {name}: {e}");
+                        continue;
+                    }
+                };
 
             if !reg_path.exists() {
                 eprintln!(
@@ -75,9 +99,9 @@ pub fn sync(project_dir: &Path, force: bool) -> Result<u32> {
                 artifact_dir.join(format!("{name}.md"))
             };
 
-            let reg_hash = registry::skill_hash(&reg_path);
-            let local_hash = if local_path.exists() {
-                registry::skill_hash(&local_path)
+            let reg_hash = registry::skill_hash(&reg_path)?;
+            let local_hash: Option<String> = if local_path.exists() {
+                Some(registry::skill_hash(&local_path)?)
             } else {
                 None
             };
@@ -89,7 +113,7 @@ pub fn sync(project_dir: &Path, force: bool) -> Result<u32> {
                 false
             };
 
-            if reg_hash != local_hash {
+            if local_hash.as_deref() != Some(reg_hash.as_str()) {
                 if locally_modified && !force {
                     // Local was changed since last sync -- don't overwrite
                     eprintln!(
@@ -181,7 +205,7 @@ pub fn sync(project_dir: &Path, force: bool) -> Result<u32> {
 
         // Bundled enforcement: verify state after sync.
         // Re-load lockfile (just saved) and check all items.
-        let lockfile = Lockfile::load(project_dir).unwrap_or_default();
+        let lockfile = Lockfile::load(project_dir)?;
         let mut drifted = 0u32;
         for at in ALL_TYPES {
             for (name, entry) in manifest.section(at) {

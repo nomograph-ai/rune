@@ -186,10 +186,10 @@ fn skill_hash_deterministic() {
     fs::write(dir.join("SKILL.md"), "---\nname: test\n---\n").unwrap();
     fs::write(dir.join("extra.md"), "extra content").unwrap();
 
-    let hash1 = rune::registry::skill_hash(&dir);
-    let hash2 = rune::registry::skill_hash(&dir);
+    let hash1 = rune::registry::skill_hash(&dir).expect("hash ok");
+    let hash2 = rune::registry::skill_hash(&dir).expect("hash ok");
     assert_eq!(hash1, hash2, "Hash should be deterministic");
-    assert!(hash1.is_some());
+    assert!(!hash1.is_empty());
 }
 
 #[test]
@@ -199,23 +199,23 @@ fn skill_hash_differs_on_content_change() {
     fs::create_dir_all(&dir).unwrap();
     fs::write(dir.join("SKILL.md"), "version 1").unwrap();
 
-    let hash1 = rune::registry::skill_hash(&dir);
+    let hash1 = rune::registry::skill_hash(&dir).expect("hash ok");
 
     fs::write(dir.join("SKILL.md"), "version 2").unwrap();
-    let hash2 = rune::registry::skill_hash(&dir);
+    let hash2 = rune::registry::skill_hash(&dir).expect("hash ok");
 
     assert_ne!(hash1, hash2, "Hash should change when content changes");
 }
 
 #[test]
-fn skill_hash_returns_none_for_symlink_file() {
+fn skill_hash_errors_for_symlink_file() {
     let tmp = tempfile::tempdir().unwrap();
     unix_fs::symlink("/etc/passwd", tmp.path().join("link.md")).unwrap();
 
-    let hash = rune::registry::skill_hash(&tmp.path().join("link.md"));
+    let result = rune::registry::skill_hash(&tmp.path().join("link.md"));
     assert!(
-        hash.is_none(),
-        "SECURITY: skill_hash should return None for symlinks"
+        result.is_err(),
+        "SECURITY: skill_hash must reject symlinks with an error, not silently"
     );
 }
 
@@ -311,7 +311,7 @@ fn today_produces_valid_date() {
     let year: u32 = date[..4].parse().unwrap();
     let month: u32 = date[5..7].parse().unwrap();
     let day: u32 = date[8..10].parse().unwrap();
-    assert!(year >= 2024 && year <= 2100);
+    assert!((2024..=2100).contains(&year));
     assert!((1..=12).contains(&month));
     assert!((1..=31).contains(&day));
 }
@@ -351,7 +351,7 @@ fn list_skills_requires_skill_md() {
         path: None,
         branch: "main".to_string(),
         readonly: false,
-        source: "git".to_string(),
+        source: rune::config::SourceKind::Git,
         token_env: None,
         git_email: None,
         git_name: None,
@@ -378,7 +378,7 @@ fn list_skills_skips_symlink_dirs() {
         path: None,
         branch: "main".to_string(),
         readonly: false,
-        source: "git".to_string(),
+        source: rune::config::SourceKind::Git,
         token_env: None,
         git_email: None,
         git_name: None,
@@ -560,11 +560,10 @@ fn lockfile_detects_local_modification() {
     );
 
     // The local hash should NOT match the lockfile hash
-    let local_hash = rune::registry::skill_hash(&skills_dir.join("test-skill"));
+    let local_hash = rune::registry::skill_hash(&skills_dir.join("test-skill")).expect("hash ok");
     let locked = lf.skills.get("test-skill").unwrap();
     assert_ne!(
-        local_hash.as_deref(),
-        Some(locked.hash.as_str()),
+        local_hash, locked.hash,
         "Local hash should differ from lockfile (skill was modified)"
     );
 }
@@ -605,29 +604,46 @@ fn lockfile_matches_when_unmodified() {
 // ============================================================
 
 #[test]
-fn clean_metadata_name_extraction() {
-    // Verify the trim logic correctly extracts registry names from metadata files
-    let names_and_expected: &[(&str, &str)] = &[
-        (".myregistry.lock", "myregistry"),
-        (".myregistry.etag", "myregistry"),
-        (".myregistry-headers.txt", "myregistry"),
-        (".myregistry-archive.tar.gz", "myregistry"),
-        (".myregistry-extract", "myregistry"),
-    ];
+fn parse_cache_metadata_name_recovers_registry() {
+    // Non-vacuous: exercises the exact function rune clean calls,
+    // not a reimplementation. If the production parser changes, this
+    // test moves with it or fails.
+    use rune::registry::parse_cache_metadata_name;
 
-    for (filename, expected) in names_and_expected {
-        let base = filename
-            .trim_start_matches('.')
-            .trim_end_matches(".lock")
-            .trim_end_matches(".etag")
-            .trim_end_matches("-headers.txt")
-            .trim_end_matches("-archive.tar.gz")
-            .trim_end_matches("-extract");
-        assert_eq!(
-            base, *expected,
-            "Failed to extract registry name from {filename}"
-        );
+    // All five metadata suffixes for a plain registry name
+    for filename in [
+        ".myregistry.lock",
+        ".myregistry.etag",
+        ".myregistry-headers.txt",
+        ".myregistry-archive.tar.gz",
+        ".myregistry-extract",
+    ] {
+        assert_eq!(parse_cache_metadata_name(filename), "myregistry");
     }
+
+    // Slash-containing registry names are stored with `/` replaced by `--`.
+    // The parser must return that fs_name form so `clean` can compare
+    // it against Registry.fs_name() in the configured set.
+    for filename in [
+        ".andunn--arcana.lock",
+        ".andunn--arcana.etag",
+        ".andunn--arcana-archive.tar.gz",
+    ] {
+        assert_eq!(parse_cache_metadata_name(filename), "andunn--arcana");
+    }
+
+    // A bare directory name (the registry tree itself) isn't a metadata
+    // file, and the function is not expected to be called on it. But it
+    // should be idempotent-ish if it is: no leading dot, no known suffix.
+    assert_eq!(parse_cache_metadata_name("myregistry"), "myregistry");
+
+    // Negative: a file with an unknown suffix is returned unchanged
+    // (minus the leading dot). rune clean then treats it as an unknown
+    // name and leaves it alone, which is the safe default.
+    assert_eq!(
+        parse_cache_metadata_name(".surprise-artifact.json"),
+        "surprise-artifact.json"
+    );
 }
 
 // ============================================================
@@ -652,7 +668,10 @@ fn multi_type_manifest_roundtrip() {
     );
     manifest.skills.insert(
         "voice".to_string(),
-        rune::manifest::SkillEntry { registry: None, version: None },
+        rune::manifest::SkillEntry {
+            registry: None,
+            version: None,
+        },
     );
 
     // Add agents
@@ -667,7 +686,10 @@ fn multi_type_manifest_roundtrip() {
     // Add rules
     manifest.rules.insert(
         "no-emdash".to_string(),
-        rune::manifest::SkillEntry { registry: None, version: None },
+        rune::manifest::SkillEntry {
+            registry: None,
+            version: None,
+        },
     );
 
     // Save and reload
@@ -705,15 +727,24 @@ fn manifest_find_type() {
     let mut manifest = rune::manifest::Manifest::default();
     manifest.skills.insert(
         "tidy".to_string(),
-        rune::manifest::SkillEntry { registry: None, version: None },
+        rune::manifest::SkillEntry {
+            registry: None,
+            version: None,
+        },
     );
     manifest.agents.insert(
         "researcher".to_string(),
-        rune::manifest::SkillEntry { registry: None, version: None },
+        rune::manifest::SkillEntry {
+            registry: None,
+            version: None,
+        },
     );
     manifest.rules.insert(
         "no-emdash".to_string(),
-        rune::manifest::SkillEntry { registry: None, version: None },
+        rune::manifest::SkillEntry {
+            registry: None,
+            version: None,
+        },
     );
 
     assert_eq!(manifest.find_type("tidy"), Some(ArtifactType::Skill));
@@ -729,11 +760,17 @@ fn manifest_section_accessors() {
     let mut manifest = rune::manifest::Manifest::default();
     manifest.section_mut(ArtifactType::Skill).insert(
         "tidy".to_string(),
-        rune::manifest::SkillEntry { registry: None, version: None },
+        rune::manifest::SkillEntry {
+            registry: None,
+            version: None,
+        },
     );
     manifest.section_mut(ArtifactType::Agent).insert(
         "researcher".to_string(),
-        rune::manifest::SkillEntry { registry: None, version: None },
+        rune::manifest::SkillEntry {
+            registry: None,
+            version: None,
+        },
     );
 
     assert_eq!(manifest.section(ArtifactType::Skill).len(), 1);
@@ -942,7 +979,7 @@ fn list_artifacts_typed_registry() {
         path: None,
         branch: "main".to_string(),
         readonly: false,
-        source: "git".to_string(),
+        source: rune::config::SourceKind::Git,
         token_env: None,
         git_email: None,
         git_name: None,
@@ -976,7 +1013,7 @@ fn list_artifacts_legacy_fallback() {
         path: None,
         branch: "main".to_string(),
         readonly: false,
-        source: "git".to_string(),
+        source: rune::config::SourceKind::Git,
         token_env: None,
         git_email: None,
         git_name: None,
@@ -1001,7 +1038,7 @@ fn artifact_path_typed_vs_legacy() {
         path: None,
         branch: "main".to_string(),
         readonly: false,
-        source: "git".to_string(),
+        source: rune::config::SourceKind::Git,
         token_env: None,
         git_email: None,
         git_name: None,
@@ -1159,4 +1196,40 @@ fn skill_entry_empty_version_keeps_registry() {
     // Empty version → treat as no version
     assert_eq!(entry.registry.as_deref(), Some("andunn/arcana@"));
     assert_eq!(entry.version, None);
+}
+
+#[test]
+fn resolve_artifact_handles_slash_in_registry_name() {
+    // Regression test for v0.8.1-era bug: Config::resolve_artifact must use
+    // reg.fs_name() (replaces `/` with `--`) when constructing the cache path,
+    // not reg.name directly. A registry named `foo/bar` caches at `foo--bar/`;
+    // joining by name produces a nonexistent `foo/bar/` path and resolution
+    // silently returns None.
+    let tmp = tempfile::tempdir().unwrap();
+    let cache_dir = tmp.path();
+
+    let repo_dir = cache_dir.join("foo--bar");
+    fs::create_dir_all(&repo_dir).unwrap();
+    fs::write(repo_dir.join("tidy.md"), "---\nname: tidy\n---\n").unwrap();
+
+    let config = rune::config::Config {
+        registry: vec![rune::config::Registry {
+            name: "foo/bar".to_string(),
+            url: "https://example.com/foo/bar".to_string(),
+            path: None,
+            branch: "main".to_string(),
+            readonly: false,
+            source: rune::config::SourceKind::Git,
+            token_env: None,
+            git_email: None,
+            git_name: None,
+        }],
+    };
+
+    let found = config.resolve_artifact("tidy", cache_dir, rune::manifest::ArtifactType::Skill);
+    assert!(
+        found.is_some(),
+        "resolve_artifact failed to find registry with `/` in name"
+    );
+    assert_eq!(found.unwrap().name, "foo/bar");
 }

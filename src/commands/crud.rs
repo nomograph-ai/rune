@@ -38,11 +38,16 @@ pub fn add(
     let repo_dir = registry::ensure_registry(reg)?;
     let reg_path = registry::artifact_path(&repo_dir, reg, name, artifact_type);
     if !reg_path.exists() {
-        anyhow::bail!("{name} not found in registry {}", reg.name);
+        anyhow::bail!(
+            "{name} not found in registry {}. Run `rune browse {}` to list \
+             available items, or check the spelling.",
+            reg.name,
+            reg.name
+        );
     }
 
     // Update manifest
-    let mut manifest = Manifest::try_load(project_dir).unwrap_or_default();
+    let mut manifest = Manifest::try_load(project_dir)?.unwrap_or_default();
     let entry = if registry_name.is_some() {
         SkillEntry {
             registry: Some(reg.name.clone()),
@@ -73,7 +78,7 @@ pub fn add(
     registry::copy_skill(&reg_path, &local_path)?;
 
     // Update lockfile
-    let mut lockfile = Lockfile::load(project_dir).unwrap_or_default();
+    let mut lockfile = Lockfile::load(project_dir)?;
     let hash = registry::skill_hash(&local_path).unwrap_or_default();
     let item_rel = if artifact_type == ArtifactType::Skill {
         registry::skill_path_relative(reg, name)
@@ -116,20 +121,27 @@ pub fn push(
     // Auto-detect type if not specified
     let at = match artifact_type {
         Some(t) => t,
-        None => manifest
-            .find_type(name)
-            .with_context(|| format!("{name} not in manifest"))?,
+        None => manifest.find_type(name).with_context(|| {
+            format!("{name} not in manifest. Run `rune add {name} --from <registry>` first.")
+        })?,
     };
 
-    let entry = manifest
-        .section(at)
-        .get(name)
-        .with_context(|| format!("{name} not in {} section", at.section()))?;
+    let entry = manifest.section(at).get(name).with_context(|| {
+        format!(
+            "{name} not in {} section. Run `rune add {name} --from <registry> -t {}`.",
+            at.section(),
+            at.singular()
+        )
+    })?;
 
     let reg = resolve_registry_typed(name, entry, &config, at)?;
 
     if reg.readonly {
-        anyhow::bail!("Registry {} is read-only. Cannot push {}.", reg.name, name);
+        anyhow::bail!(
+            "Registry {} is read-only. Configure a writable registry with `rune setup`, \
+             or change the `readonly` flag on this registry in rune config.toml.",
+            reg.name
+        );
     }
 
     let repo_dir = registry::ensure_registry(reg)?;
@@ -143,7 +155,10 @@ pub fn push(
     } else if local_file.exists() {
         &local_file
     } else {
-        anyhow::bail!("{name} not found locally");
+        anyhow::bail!(
+            "{name} not found under {}. Run `rune sync` to pull it from the registry first.",
+            artifact_dir.display()
+        );
     };
 
     // Pass local format hint so new items get the right path in the registry
@@ -211,7 +226,7 @@ pub fn remove(project_dir: &Path, name: &str, artifact_type: Option<ArtifactType
     }
 
     // Clean lockfile entry
-    let mut lockfile = Lockfile::load(project_dir).unwrap_or_default();
+    let mut lockfile = Lockfile::load(project_dir)?;
     if lockfile.section_mut(at).remove(name).is_some() {
         lockfile.save(project_dir)?;
     }

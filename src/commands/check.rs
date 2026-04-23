@@ -37,15 +37,15 @@ pub(crate) fn check_item(
         (false, true) => SkillStatus::Missing,
         (true, false) => SkillStatus::RegistryMissing,
         (true, true) => {
-            let local_hash = registry::skill_hash(&local_path);
-            let reg_hash = registry::skill_hash(&reg_path);
+            let local_hash = registry::skill_hash(&local_path)?;
+            let reg_hash = registry::skill_hash(&reg_path)?;
             if local_hash == reg_hash {
                 SkillStatus::Current
             } else {
                 // Use lockfile for drift direction
                 let direction = if let Some(locked) = lockfile.section(artifact_type).get(name) {
-                    let local_changed = local_hash.as_deref() != Some(locked.hash.as_str());
-                    let reg_changed = reg_hash.as_deref() != Some(locked.hash.as_str());
+                    let local_changed = local_hash != locked.hash;
+                    let reg_changed = reg_hash != locked.hash;
                     match (local_changed, reg_changed) {
                         (true, false) => DriftDirection::LocalNewer,
                         (false, true) => DriftDirection::RegistryNewer,
@@ -69,7 +69,7 @@ pub fn check(
 ) -> Result<Vec<(String, String, SkillStatus)>> {
     let config = Config::load()?;
     let manifest = Manifest::load(project_dir)?;
-    let lockfile = Lockfile::load(project_dir).unwrap_or_default();
+    let lockfile = Lockfile::load(project_dir)?;
 
     let mut results = Vec::new();
 
