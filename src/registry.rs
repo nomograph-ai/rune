@@ -24,10 +24,14 @@ pub fn validate_name(name: &str) -> Result<()> {
         anyhow::bail!("Invalid name: {name:?} (must not contain whitespace)");
     }
     if name.contains('/') || name.contains('\\') || name.contains("..") || name.contains('\0') {
-        anyhow::bail!("Invalid name: {name} (must not contain /, \\, .., or null bytes)");
+        anyhow::bail!(
+            "Invalid name: {name}. Use [a-zA-Z0-9_-]+ only (no slashes, dots, or null bytes)."
+        );
     }
     if name.starts_with('.') || name.starts_with('-') {
-        anyhow::bail!("Invalid name: {name} (must not start with . or -)");
+        anyhow::bail!(
+            "Invalid name: {name}. Use [a-zA-Z0-9_-]+ only (must not start with . or -)."
+        );
     }
     Ok(())
 }
@@ -706,8 +710,11 @@ pub fn materialize_artifact(
 
     if reg.source == crate::config::SourceKind::Archive {
         anyhow::bail!(
-            "Version pin `@{ver}` on {name} is not supported for archive-type registry {} -- archive registries have no git history to resolve refs against",
-            reg.name
+            "Version pin `@{ver}` on {name} is not supported for archive-type \
+             registry {reg_name}. Fix: change `source = \"git\"` for {reg_name} \
+             in rune config.toml, or remove the `@{ver}` suffix from {name} in \
+             rune.toml.",
+            reg_name = reg.name
         );
     }
 

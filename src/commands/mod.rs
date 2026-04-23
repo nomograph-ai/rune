@@ -56,6 +56,29 @@ impl SkillStatus {
             Self::RegistryMissing => color::red("REGISTRY MISSING"),
         }
     }
+
+    /// Prescriptive next action for a non-current status. Returns None
+    /// when there's nothing actionable (Current, Unregistered without
+    /// manifest context).
+    pub fn hint(&self, name: &str) -> Option<String> {
+        match self {
+            Self::Current => None,
+            Self::Drifted { direction } => Some(match direction {
+                DriftDirection::LocalNewer => format!("→ run: rune push {name}"),
+                DriftDirection::RegistryNewer => {
+                    format!("→ run: rune sync  (or `rune sync --force {name}` to discard local)")
+                }
+                DriftDirection::Diverged => format!(
+                    "→ run: rune diff {name}  (inspect), then `rune push {name}` or `rune sync --force`"
+                ),
+            }),
+            Self::Missing => Some(format!("→ run: rune sync  (pulls {name} from registry)")),
+            Self::RegistryMissing => Some(format!(
+                "→ check config: registry for {name} is configured but the item is not in the cached tree; run `rune doctor`"
+            )),
+            Self::Unregistered => None,
+        }
+    }
 }
 
 impl std::fmt::Display for SkillStatus {
