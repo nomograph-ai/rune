@@ -351,7 +351,7 @@ pub fn audit() -> Result<()> {
         for skill_name in &skills {
             let skill_path = registry::skill_path(&repo_dir, reg, skill_name);
             let local_lines = count_lines(&skill_path);
-            let ped = Pedigree::from_skill(&skill_path).unwrap_or_default();
+            let ped = Pedigree::from_skill_or_warn(&skill_path);
 
             if !ped.has_origin() {
                 // Not imported -- just report size
@@ -555,7 +555,7 @@ pub fn status(project_dir: &Path) -> Result<()> {
             .unwrap_or_default();
         for skill_name in &skills {
             let skill_path = registry::skill_path(&repo_dir, reg, skill_name);
-            let ped = Pedigree::from_skill(&skill_path).unwrap_or_default();
+            let ped = Pedigree::from_skill_or_warn(&skill_path);
             if !ped.has_origin() {
                 continue;
             }
