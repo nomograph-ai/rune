@@ -213,12 +213,6 @@ impl Manifest {
         project_dir.join(".claude").join("rune.toml")
     }
 
-    /// Where skills live in a project (convenience alias for lib consumers).
-    #[allow(dead_code)]
-    pub fn skills_dir(project_dir: &Path) -> PathBuf {
-        project_dir.join(".claude").join("skills")
-    }
-
     pub fn save(&self, project_dir: &Path) -> Result<()> {
         let path = Self::path(project_dir);
         if let Some(parent) = path.parent() {
@@ -249,18 +243,6 @@ impl Manifest {
             ArtifactType::Agent => &mut self.agents,
             ArtifactType::Rule => &mut self.rules,
         }
-    }
-
-    /// Iterate all items across all types.
-    #[allow(dead_code)]
-    pub fn all_items(&self) -> Vec<(ArtifactType, &str, &SkillEntry)> {
-        let mut items = Vec::new();
-        for at in ALL_TYPES {
-            for (name, entry) in self.section(at) {
-                items.push((at, name.as_str(), entry));
-            }
-        }
-        items
     }
 
     /// Total count of items across all types.

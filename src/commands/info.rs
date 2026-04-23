@@ -156,7 +156,9 @@ pub fn doctor(project_dir: &Path) -> Result<()> {
         };
 
         if repo_dir.exists() {
-            let skills = registry::list_skills(&repo_dir, reg).unwrap_or_default();
+            let skills =
+                registry::list_artifacts(&repo_dir, reg, crate::manifest::ArtifactType::Skill)
+                    .unwrap_or_default();
             eprintln!(
                 "  registry {}{ro}{src}{auth}{identity}: {} skills {}",
                 color::cyan(&reg.name),
@@ -341,7 +343,8 @@ pub fn audit() -> Result<()> {
         }
 
         let repo_dir = registry::ensure_registry(reg)?;
-        let skills = registry::list_skills(&repo_dir, reg)?;
+        let skills =
+            registry::list_artifacts(&repo_dir, reg, crate::manifest::ArtifactType::Skill)?;
 
         eprintln!("{} ({} skills)\n", color::bold(&reg.name), skills.len());
 
@@ -460,7 +463,9 @@ pub fn status(project_dir: &Path) -> Result<()> {
         let src = color::dim(&format!(" [{}]", reg.source));
 
         if repo_dir.exists() {
-            let skills = registry::list_skills(&repo_dir, reg).unwrap_or_default();
+            let skills =
+                registry::list_artifacts(&repo_dir, reg, crate::manifest::ArtifactType::Skill)
+                    .unwrap_or_default();
             eprintln!(
                 "  {}{ro}{src}: {} skills",
                 color::cyan(&reg.name),
@@ -546,7 +551,8 @@ pub fn status(project_dir: &Path) -> Result<()> {
             Ok(d) => d,
             Err(_) => continue,
         };
-        let skills = registry::list_skills(&repo_dir, reg).unwrap_or_default();
+        let skills = registry::list_artifacts(&repo_dir, reg, crate::manifest::ArtifactType::Skill)
+            .unwrap_or_default();
         for skill_name in &skills {
             let skill_path = registry::skill_path(&repo_dir, reg, skill_name);
             let ped = Pedigree::from_skill(&skill_path).unwrap_or_default();

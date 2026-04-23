@@ -27,10 +27,10 @@ pub use fs::{copy_skill, is_directory_skill, skill_hash};
 pub use git::{commit_and_push, skill_commit};
 pub use materialize::{materialize_artifact, resolved_commit};
 pub use paths::{
-    artifact_path, artifact_path_relative, artifact_path_with_hint, list_artifacts, list_skills,
-    skill_path, skill_path_relative, skill_path_with_hint,
+    artifact_path, artifact_path_relative, artifact_path_with_hint, list_artifacts, skill_path,
+    skill_path_relative, skill_path_with_hint,
 };
-pub use validate::{validate_name, validate_skill_name};
+pub use validate::validate_name;
 
 // ── Ensure registry ─────────────────────────────────────────────────
 

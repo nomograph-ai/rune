@@ -22,12 +22,8 @@ pub use upstream::{browse, diff, import, update, upstream};
 #[derive(Debug)]
 pub enum SkillStatus {
     Current,
-    Drifted {
-        direction: DriftDirection,
-    },
-    Missing, // in manifest but not on disk
-    #[allow(dead_code)]
-    Unregistered, // on disk but not in manifest
+    Drifted { direction: DriftDirection },
+    Missing,         // in manifest but not on disk
     RegistryMissing, // in manifest but item not found in any registry
 }
 
@@ -39,27 +35,34 @@ pub enum DriftDirection {
 }
 
 impl SkillStatus {
-    /// Colored string representation.
-    pub fn colored(&self) -> String {
+    /// Plain label for the status (used by Display and colored).
+    fn label(&self) -> String {
         match self {
-            Self::Current => color::green("CURRENT"),
+            Self::Current => "CURRENT".to_string(),
             Self::Drifted { direction } => {
                 let dir = match direction {
                     DriftDirection::LocalNewer => "local is newer",
                     DriftDirection::RegistryNewer => "registry is newer",
                     DriftDirection::Diverged => "diverged",
                 };
-                color::yellow(&format!("DRIFTED  {dir}"))
+                format!("DRIFTED  {dir}")
             }
-            Self::Missing => color::red("MISSING"),
-            Self::Unregistered => color::yellow("UNREGISTERED"),
-            Self::RegistryMissing => color::red("REGISTRY MISSING"),
+            Self::Missing => "MISSING".to_string(),
+            Self::RegistryMissing => "REGISTRY MISSING".to_string(),
         }
     }
 
-    /// Prescriptive next action for a non-current status. Returns None
-    /// when there's nothing actionable (Current, Unregistered without
-    /// manifest context).
+    /// Colored string representation.
+    pub fn colored(&self) -> String {
+        let label = self.label();
+        match self {
+            Self::Current => color::green(&label),
+            Self::Drifted { .. } => color::yellow(&label),
+            Self::Missing | Self::RegistryMissing => color::red(&label),
+        }
+    }
+
+    /// Prescriptive next action for a non-current status.
     pub fn hint(&self, name: &str) -> Option<String> {
         match self {
             Self::Current => None,
@@ -76,27 +79,13 @@ impl SkillStatus {
             Self::RegistryMissing => Some(format!(
                 "→ check config: registry for {name} is configured but the item is not in the cached tree; run `rune doctor`"
             )),
-            Self::Unregistered => None,
         }
     }
 }
 
 impl std::fmt::Display for SkillStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Current => write!(f, "CURRENT"),
-            Self::Drifted { direction } => {
-                let dir = match direction {
-                    DriftDirection::LocalNewer => "local is newer",
-                    DriftDirection::RegistryNewer => "registry is newer",
-                    DriftDirection::Diverged => "diverged",
-                };
-                write!(f, "DRIFTED  {dir}")
-            }
-            Self::Missing => write!(f, "MISSING"),
-            Self::Unregistered => write!(f, "UNREGISTERED"),
-            Self::RegistryMissing => write!(f, "REGISTRY MISSING"),
-        }
+        write!(f, "{}", self.label())
     }
 }
 

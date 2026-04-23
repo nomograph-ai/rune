@@ -115,17 +115,6 @@ impl Config {
         self.registry.iter().find(|r| r.name == name)
     }
 
-    /// Resolve which registry has a skill, checking in declaration order.
-    /// Returns the first registry that contains the skill.
-    #[allow(dead_code)]
-    pub fn resolve_skill(
-        &self,
-        skill_name: &str,
-        cache_dir: &std::path::Path,
-    ) -> Option<&Registry> {
-        self.resolve_artifact(skill_name, cache_dir, crate::manifest::ArtifactType::Skill)
-    }
-
     /// Resolve which registry has an item of the given type.
     /// Checks registries in declaration order, returns the first match.
     pub fn resolve_artifact(
