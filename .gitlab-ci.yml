@@ -9,6 +9,13 @@ include:
 
 stages: [test, build, sign, publish, release, notify]
 
+file-size-gate:
+  stage: test
+  tags: [storr]
+  needs: []
+  script:
+    - ./scripts/check-file-sizes.sh
+
 # Nudge the kits registry to re-sense on tag push (kit-registry@v3.1.0+).
 notify-kits:
   stage: notify
