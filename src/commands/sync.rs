@@ -46,6 +46,34 @@ pub fn sync(project_dir: &Path, force: bool) -> Result<u32> {
             };
 
             let repo_dir = registry::ensure_registry(reg)?;
+
+            // Integrity check for pinned skills: if a version is pinned and
+            // we have a prior lockfile entry, the resolved SHA must not have
+            // moved. Tags that get force-pushed upstream are the only way
+            // this can change — a legitimate re-pin goes through manifest
+            // edit + fresh lockfile. Hard stop here; pinned entries must
+            // stay reproducible.
+            if entry.version.is_some()
+                && let Some(locked) = lockfile.section(at).get(name)
+                && let Some(ref locked_sha) = locked.registry_commit
+                && let Ok(current_full) = registry::resolved_commit(reg, entry.version.as_deref())
+            {
+                let current_short = current_full.get(..7).unwrap_or(&current_full);
+                if current_short != locked_sha {
+                    anyhow::bail!(
+                        "integrity violation: {name} is pinned to {pin} which \
+                         previously resolved to {locked_sha} (lockfile) but now \
+                         resolves to {current_short} (registry {reg_name}). \
+                         Upstream tag appears to have been rewritten. \
+                         Investigate, then if safe: bump the pin in rune.toml \
+                         to the new ref, or delete the {name} entry from \
+                         rune.lock to accept the new SHA.",
+                        pin = entry.version.as_deref().unwrap_or("?"),
+                        reg_name = reg.name,
+                    );
+                }
+            }
+
             let reg_path =
                 match registry::materialize_artifact(reg, name, at, entry.version.as_deref()) {
                     Ok(p) => p,
