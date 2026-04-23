@@ -1,5 +1,91 @@
 # Changelog
 
+## v0.12.0 (2026-04-23)
+
+Stabilization pass. Five commits cleaning up structural debt that
+survived v0.10 and v0.11. Pure quality; no behavior change for
+end-users.
+
+### Changed
+
+- **Dead code removed.** Six items flagged `#[allow(dead_code)]` or
+  otherwise unused were deleted:
+  - `SkillStatus::Unregistered` — never constructed
+  - `validate_skill_name` — alias for `validate_name`; call sites
+    migrated
+  - `Config::resolve_skill` — dead wrapper around `resolve_artifact`
+  - `Manifest::skills_dir` — dead helper
+  - `Manifest::all_items` — dead iterator
+  - `registry::list_skills` — duplicate of `list_artifacts(Skill)`;
+    5 call sites migrated
+
+- **`SkillStatus::colored` and `Display` deduplicated.** Both methods
+  match-armed their way through the same labels. Extracted a private
+  `label()` method; colored wraps it in one color pass, Display writes
+  it directly. Half the boilerplate.
+
+- **Directory walker consolidation.** Three near-identical recursive
+  walkers (`collect_files` in registry/fs, `collect_files_public`
+  test wrapper, `walkdir_simple` in info.rs) merged into one public
+  `registry::fs::collect_files`. ~50 lines deleted.
+
+- **`Pedigree::from_skill_or_warn` surfaces bulk-scan errors.** Seven
+  call sites across info/sync/upstream used
+  `Pedigree::from_skill(path).unwrap_or_default()` to tolerate bad
+  frontmatter. The silent-default swallowed IO errors and broke
+  `rune update` eligibility for malformed SKILL.md files. The new
+  helper logs `warning: could not read pedigree at X: <err>` to
+  stderr and returns default. Bulk-scan semantics preserved,
+  failures now visible.
+
+- **`commands/info.rs` (636 lines) split into per-command files.**
+  Five unrelated commands (ls/ls_registry, doctor, clean, audit,
+  status) each got their own file. Imports narrowed per-command.
+  Public API unchanged.
+
+### Added
+
+- **Hook script derivation test.** `resources/hook.sh` hardcodes
+  paths for `.claude/skills/`, `.claude/agents/`, `.claude/rules/`.
+  The source of truth is `ArtifactType::default_dir()`. A new test
+  `hook_script_covers_all_artifact_types` asserts, for every variant
+  in `ALL_TYPES`, that hook.sh contains the expected path substring.
+  Adding a fourth type without updating hook.sh fails CI. Derivation
+  via test rather than runtime templating keeps the shellcheck gate
+  on the static script intact.
+
+### File-size gate
+
+Two more waivers removed — only `tests/integration.rs` remains
+(1162 lines, scheduled for a topic-split in a future release).
+
+### Deferred to v0.13 / later
+
+Three tasks from the original audit remain unlanded. Each is a focused
+MR of its own:
+
+- `ValidatedName` new-type threaded through filesystem-touching call
+  sites (Bundled Enforcement for the name-validation layer).
+- Migrate `Manifest`/`Lockfile` sections to
+  `BTreeMap<ArtifactType, _>` with custom serde that preserves the
+  `[skills]`/`[agents]`/`[rules]` TOML layout.
+- Git-path hardening: consolidate `git_command` / `git_output` /
+  `git_command_auth` wrappers; replace `GIT_ASKPASS` shell-script
+  trick with an inline credential helper; add local-bare-repo
+  integration tests.
+
+Rune now targets ~14/15 on the feedback-audit (up from 10/15 at
+v0.9.0): strong Inescapability (deny warnings, cargo-deny, file-size
+gate, integrity check), strong Governance (fast CI, file-size gate,
+discipline), strong Verifiability (Result-returning parsers, 76 tests
+including 6 archive-path tests via httpmock), strong Brevity
+(prescriptive errors, per-command files), moderate Derivation (serde +
+clap + runtime AGENTS.md + hook-test; no spec-driven codegen chain,
+which is appropriate for a CLI scope).
+
+Stabilization pause. v0.13 onward picks up the three deferred items
+as discrete MRs when the need arises.
+
 ## v0.11.0 (2026-04-23)
 
 Structural pass on the registry module and a ground-up rewrite of the
