@@ -120,7 +120,7 @@ impl Config {
         artifact_type: crate::manifest::ArtifactType,
     ) -> Option<&Registry> {
         for reg in &self.registry {
-            let repo_dir = cache_dir.join(&reg.name);
+            let repo_dir = cache_dir.join(reg.fs_name());
             if !repo_dir.exists() {
                 continue;
             }
