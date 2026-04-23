@@ -1,5 +1,35 @@
 # Changelog
 
+## v0.13.0 (2026-04-23)
+
+Drift-detection follow-up to v0.12's alias fix. Two commits: proactive
+surface in `rune doctor`, and a regression test module targeting the
+class of bug that caused v0.12 to ship.
+
+### Added
+
+- **`rune doctor` lockfile drift check.** For every lockfile entry
+  whose `registry` field doesn't resolve in the current config (even
+  via alias), doctor now prints a yellow warning with a prescriptive
+  fix — add an alias or re-sync. Previously the problem only surfaced
+  at runtime through a command failure; now it's visible up front.
+
+- **Manifest health check uses alias-aware resolution.** The prior
+  check built a HashSet of canonical registry names and missed aliases,
+  which would have caused false-positive "stale" flags after v0.12
+  landed. Now uses `Config::registry(name)`, the same resolution path
+  commands use, so doctor's conclusions match runtime behavior.
+
+- **Migration-scenarios test module.** Four tests in
+  `tests/integration.rs` under the `migration_*` prefix exercise state
+  that ages across renames — the axis the prior test suite didn't
+  cover, and the reason the v0.12 alias bug survived CI. Tests cover:
+  baseline failure without alias, recovery with alias, alias
+  precedence semantics on name collision, and doctor's drift check as
+  a pure-function assertion.
+
+Test count now 81 (22 unit + 53 integration + 6 archive).
+
 ## v0.12.0 (2026-04-23)
 
 Stabilization pass plus one user-visible fix. Six commits cleaning up
