@@ -59,10 +59,10 @@ fn path_traversal_names_rejected() {
         "trailing ",
     ];
     for name in &attacks {
-        let result = rune::registry::validate_skill_name(name);
+        let result = rune::registry::validate_name(name);
         assert!(
             result.is_err(),
-            "SECURITY: validate_skill_name accepted malicious name: {name:?}"
+            "SECURITY: validate_name accepted malicious name: {name:?}"
         );
     }
 }
@@ -79,7 +79,7 @@ fn valid_skill_names_accepted() {
         "a",
     ];
     for name in &names {
-        let result = rune::registry::validate_skill_name(name);
+        let result = rune::registry::validate_name(name);
         assert!(result.is_ok(), "Rejected valid name: {name}");
     }
 }
@@ -356,7 +356,8 @@ fn list_skills_requires_skill_md() {
         git_email: None,
         git_name: None,
     };
-    let skills = rune::registry::list_skills(base, &reg).unwrap();
+    let skills =
+        rune::registry::list_artifacts(base, &reg, rune::manifest::ArtifactType::Skill).unwrap();
     assert_eq!(skills, vec!["valid-skill"]);
 }
 
@@ -383,7 +384,8 @@ fn list_skills_skips_symlink_dirs() {
         git_email: None,
         git_name: None,
     };
-    let skills = rune::registry::list_skills(base, &reg).unwrap();
+    let skills =
+        rune::registry::list_artifacts(base, &reg, rune::manifest::ArtifactType::Skill).unwrap();
     assert_eq!(skills, vec!["real"]);
 }
 
@@ -1107,15 +1109,15 @@ fn validate_name_works() {
     assert!(rune::registry::validate_name("my-agent").is_ok());
     assert!(rune::registry::validate_name("no-emdash").is_ok());
 
-    // Same validation rules as validate_skill_name
+    // Same validation rules as validate_name
     assert!(rune::registry::validate_name("../escape").is_err());
     assert!(rune::registry::validate_name(".hidden").is_err());
     assert!(rune::registry::validate_name("").is_err());
     assert!(rune::registry::validate_name("-flag").is_err());
 
     // Alias still works
-    assert!(rune::registry::validate_skill_name("tidy").is_ok());
-    assert!(rune::registry::validate_skill_name("../escape").is_err());
+    assert!(rune::registry::validate_name("tidy").is_ok());
+    assert!(rune::registry::validate_name("../escape").is_err());
 }
 
 // ── Skill version (@version suffix + table form) ───────────────────────

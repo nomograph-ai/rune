@@ -130,44 +130,6 @@ pub fn artifact_path_relative(reg: &Registry, name: &str, artifact_type: Artifac
     }
 }
 
-/// List all available skills in a registry.
-pub fn list_skills(repo_dir: &Path, reg: &Registry) -> Result<Vec<String>> {
-    let base = match &reg.path {
-        Some(p) => repo_dir.join(p),
-        None => repo_dir.to_path_buf(),
-    };
-
-    if !base.exists() {
-        return Ok(vec![]);
-    }
-
-    let mut skills = Vec::new();
-    for entry in std::fs::read_dir(&base)? {
-        let entry = entry?;
-        let ft = entry.file_type()?;
-        if ft.is_symlink() {
-            continue;
-        }
-        let path = entry.path();
-        let name = entry.file_name().to_string_lossy().to_string();
-        if name.starts_with('.') {
-            continue;
-        }
-
-        if ft.is_dir() && path.join("SKILL.md").exists() {
-            skills.push(name);
-        } else if ft.is_file()
-            && path.extension().map(|e| e == "md").unwrap_or(false)
-            && let Some(stem) = path.file_stem()
-        {
-            skills.push(stem.to_string_lossy().to_string());
-        }
-    }
-    skills.sort();
-    skills.dedup();
-    Ok(skills)
-}
-
 /// List all items of a given type in a registry.
 pub fn list_artifacts(
     repo_dir: &Path,

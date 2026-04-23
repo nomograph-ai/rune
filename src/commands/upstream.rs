@@ -91,7 +91,7 @@ pub fn browse(registry_name: &str, type_filter: Option<ArtifactType>) -> Result<
 pub fn import(skill_ref: &str, target_name: Option<&str>) -> Result<()> {
     let config = Config::load()?;
     let (skill_name, source_name) = parse_skill_ref(skill_ref)?;
-    registry::validate_skill_name(skill_name)?;
+    registry::validate_name(skill_name)?;
 
     // Resolve source registry
     let source_reg = config
@@ -204,7 +204,8 @@ pub fn upstream(quiet: bool) -> Result<()> {
         }
 
         let repo_dir = registry::ensure_registry(reg)?;
-        let skills = registry::list_skills(&repo_dir, reg)?;
+        let skills =
+            registry::list_artifacts(&repo_dir, reg, crate::manifest::ArtifactType::Skill)?;
 
         for skill_name in &skills {
             let skill_path = registry::skill_path(&repo_dir, reg, skill_name);
@@ -288,7 +289,7 @@ pub fn upstream(quiet: bool) -> Result<()> {
 
 /// Show diff between imported skill and upstream version.
 pub fn diff(skill_name: &str) -> Result<()> {
-    registry::validate_skill_name(skill_name)?;
+    registry::validate_name(skill_name)?;
     let config = Config::load()?;
 
     // Find the skill in a writable registry
@@ -386,7 +387,7 @@ pub fn diff(skill_name: &str) -> Result<()> {
 
 /// Pull upstream changes for an imported skill.
 pub fn update(skill_name: &str, force: bool) -> Result<()> {
-    registry::validate_skill_name(skill_name)?;
+    registry::validate_name(skill_name)?;
     let config = Config::load()?;
 
     let (reg, repo_dir) = find_imported_skill(&config, skill_name)?;
