@@ -11,7 +11,7 @@ use std::path::PathBuf;
 
 use crate::config::{Config, Registry, SourceKind};
 
-mod archive;
+pub mod archive;
 mod auth;
 mod cache;
 pub mod fs;
