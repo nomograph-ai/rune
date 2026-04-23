@@ -311,7 +311,7 @@ fn today_produces_valid_date() {
     let year: u32 = date[..4].parse().unwrap();
     let month: u32 = date[5..7].parse().unwrap();
     let day: u32 = date[8..10].parse().unwrap();
-    assert!(year >= 2024 && year <= 2100);
+    assert!((2024..=2100).contains(&year));
     assert!((1..=12).contains(&month));
     assert!((1..=31).contains(&day));
 }
@@ -652,7 +652,10 @@ fn multi_type_manifest_roundtrip() {
     );
     manifest.skills.insert(
         "voice".to_string(),
-        rune::manifest::SkillEntry { registry: None, version: None },
+        rune::manifest::SkillEntry {
+            registry: None,
+            version: None,
+        },
     );
 
     // Add agents
@@ -667,7 +670,10 @@ fn multi_type_manifest_roundtrip() {
     // Add rules
     manifest.rules.insert(
         "no-emdash".to_string(),
-        rune::manifest::SkillEntry { registry: None, version: None },
+        rune::manifest::SkillEntry {
+            registry: None,
+            version: None,
+        },
     );
 
     // Save and reload
@@ -705,15 +711,24 @@ fn manifest_find_type() {
     let mut manifest = rune::manifest::Manifest::default();
     manifest.skills.insert(
         "tidy".to_string(),
-        rune::manifest::SkillEntry { registry: None, version: None },
+        rune::manifest::SkillEntry {
+            registry: None,
+            version: None,
+        },
     );
     manifest.agents.insert(
         "researcher".to_string(),
-        rune::manifest::SkillEntry { registry: None, version: None },
+        rune::manifest::SkillEntry {
+            registry: None,
+            version: None,
+        },
     );
     manifest.rules.insert(
         "no-emdash".to_string(),
-        rune::manifest::SkillEntry { registry: None, version: None },
+        rune::manifest::SkillEntry {
+            registry: None,
+            version: None,
+        },
     );
 
     assert_eq!(manifest.find_type("tidy"), Some(ArtifactType::Skill));
@@ -729,11 +744,17 @@ fn manifest_section_accessors() {
     let mut manifest = rune::manifest::Manifest::default();
     manifest.section_mut(ArtifactType::Skill).insert(
         "tidy".to_string(),
-        rune::manifest::SkillEntry { registry: None, version: None },
+        rune::manifest::SkillEntry {
+            registry: None,
+            version: None,
+        },
     );
     manifest.section_mut(ArtifactType::Agent).insert(
         "researcher".to_string(),
-        rune::manifest::SkillEntry { registry: None, version: None },
+        rune::manifest::SkillEntry {
+            registry: None,
+            version: None,
+        },
     );
 
     assert_eq!(manifest.section(ArtifactType::Skill).len(), 1);
@@ -1159,4 +1180,40 @@ fn skill_entry_empty_version_keeps_registry() {
     // Empty version → treat as no version
     assert_eq!(entry.registry.as_deref(), Some("andunn/arcana@"));
     assert_eq!(entry.version, None);
+}
+
+#[test]
+fn resolve_artifact_handles_slash_in_registry_name() {
+    // Regression test for v0.8.1-era bug: Config::resolve_artifact must use
+    // reg.fs_name() (replaces `/` with `--`) when constructing the cache path,
+    // not reg.name directly. A registry named `foo/bar` caches at `foo--bar/`;
+    // joining by name produces a nonexistent `foo/bar/` path and resolution
+    // silently returns None.
+    let tmp = tempfile::tempdir().unwrap();
+    let cache_dir = tmp.path();
+
+    let repo_dir = cache_dir.join("foo--bar");
+    fs::create_dir_all(&repo_dir).unwrap();
+    fs::write(repo_dir.join("tidy.md"), "---\nname: tidy\n---\n").unwrap();
+
+    let config = rune::config::Config {
+        registry: vec![rune::config::Registry {
+            name: "foo/bar".to_string(),
+            url: "https://example.com/foo/bar".to_string(),
+            path: None,
+            branch: "main".to_string(),
+            readonly: false,
+            source: "git".to_string(),
+            token_env: None,
+            git_email: None,
+            git_name: None,
+        }],
+    };
+
+    let found = config.resolve_artifact("tidy", cache_dir, rune::manifest::ArtifactType::Skill);
+    assert!(
+        found.is_some(),
+        "resolve_artifact failed to find registry with `/` in name"
+    );
+    assert_eq!(found.unwrap().name, "foo/bar");
 }
