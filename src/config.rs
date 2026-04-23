@@ -60,6 +60,13 @@ pub struct Registry {
     /// Git user.name for commits to this registry.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub git_name: Option<String>,
+    /// Alternate names this registry answers to during lookup. Used when
+    /// a project's rune.toml or rune.lock was written against a shorter
+    /// form of the registry name (e.g. "arcana" before it was qualified
+    /// to "andunn/arcana"). Canonical writes always use `name`;
+    /// `aliases` are read-only aliases for backward compatibility.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub aliases: Vec<String>,
 }
 
 impl Registry {
@@ -111,8 +118,15 @@ impl Config {
         Ok(home.join(".cache").join("rune").join("registries"))
     }
 
+    /// Look up a registry by name, checking both the canonical `name`
+    /// field and the registry's `aliases` list. Aliases exist so that
+    /// projects carrying rune.toml / rune.lock entries written against
+    /// an older short form of the name (e.g. `arcana`) continue to
+    /// resolve after the config is qualified (`andunn/arcana`).
     pub fn registry(&self, name: &str) -> Option<&Registry> {
-        self.registry.iter().find(|r| r.name == name)
+        self.registry
+            .iter()
+            .find(|r| r.name == name || r.aliases.iter().any(|a| a == name))
     }
 
     /// Resolve which registry has an item of the given type.
