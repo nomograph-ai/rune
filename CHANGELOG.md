@@ -1,5 +1,96 @@
 # Changelog
 
+## v0.11.0 (2026-04-23)
+
+Structural pass on the registry module and a ground-up rewrite of the
+archive-source fetch path. v0.10 landed the discipline under which
+these larger refactors could actually be verified; v0.11 lands the
+refactors.
+
+### Changed
+
+- **`src/registry.rs` split into submodules.** The 1197-line god-file
+  became a 9-module tree under `src/registry/` (validate, cache, auth,
+  git, archive, fs, paths, materialize, plus mod.rs). Each submodule
+  is under 250 lines; the file-size CI waiver for registry.rs is
+  removed. Public API unchanged — callers still import from
+  `crate::registry::X`. One test import path changed:
+  `rune::registry::collect_files_public` →
+  `rune::registry::fs::collect_files_public`.
+
+- **Archive fetch rewritten in Rust: ureq + tar + flate2.** Replaces
+  the curl+tar shell-out. New `ArchiveResponse` enum with three
+  unambiguous variants (`Fresh`, `NotModified`, `StaleOk`) replaces
+  the prior three-overlapping-signals pattern (curl exit status +
+  headers substring match + file existence) for detecting 304. Fixes
+  the class of bug that triggered this whole audit:
+
+  Before: curl -f returned 0 on 304 without writing the `-o` file;
+  old code's 304 branch only fired on non-zero exit; flow fell through
+  to `tar xzf` on a missing file; BSD tar emitted an opaque
+  "m: No such file or directory" error.
+
+  After: the HTTP client returns a typed status; `304` becomes a
+  first-class enum variant that cannot reach `extract()`.
+
+  The symptomatic short-circuit patch from v0.9.1 (commit db0bfe9) is
+  gone; the root cause is gone with it.
+
+### Added
+
+- **Atomic-swap extraction** for archives. Two-phase
+  `rename(dest → backup); rename(new → dest); rm backup` guarantees
+  concurrent readers never observe a missing directory mid-swap. Prior
+  implementation's single-step `rm -rf dest; rename(new, dest)` had a
+  window where readers could see no dest at all.
+
+- **Path-traversal guard** on tar entry extraction: archives with
+  `..` components or absolute paths after strip-components error out
+  instead of escaping the extraction directory. (The `tar` crate
+  itself rejects these at the entry layer; our check is
+  defense-in-depth.)
+
+- **Archive integration tests** (`tests/archive.rs`, 6 tests via
+  httpmock): 200 fresh extract, 304 preserves cache, 404 without
+  cache errors, 404 with cache falls back to cached tree, truncated
+  gzip fails cleanly, ETag roundtrip (first 200 writes ETag, second
+  call sends `If-None-Match`). The 304 bug that started this audit
+  would have been caught by any of these in 10 lines.
+
+- **`RUNE_ARCHIVE_URL_<FS_NAME>`** environment override on the
+  archive URL resolver. Narrow test hook used by the new integration
+  tests; GitHub/GitLab URL templates remain for real registries.
+
+### Dependencies
+
+- Added: `ureq = 2` (blocking HTTP, rustls, no tokio), `tar = 0.4`,
+  `flate2 = 1` (miniz_oxide backend, no OpenSSL).
+- Added dev-dep: `httpmock = 0.7`.
+- Removed runtime dep on `curl` and `tar` CLI tools (still required
+  for `git`-source registries).
+
+### Deferred
+
+Five tasks from the originally-planned v0.11 scope were cancelled and
+deferred. They're follow-up structural cleanups, not corrections:
+
+- Split `commands/info.rs` + `commands/upstream.rs` into per-command
+  files (removes two file-size waivers).
+- Consolidate the three directory walkers (`copy_dir_recursive`,
+  `walkdir_simple`, `collect_files`) into one.
+- `ValidatedName` new-type threaded through filesystem-touching call
+  sites (Bundled Enforcement for the name-validation layer).
+- Migrate `Manifest` / `Lockfile` sections to
+  `BTreeMap<ArtifactType, _>` with custom serde that preserves the
+  existing TOML `[skills]` / `[agents]` / `[rules]` layout.
+- Git-path hardening: consolidate `git_command` / `git_output` /
+  `git_command_auth` wrappers, replace the `GIT_ASKPASS` shell-script
+  trick with an inline credential helper, add a local-bare-repo
+  integration test.
+
+Each has a task pre-filed under the `rune-smell-free` spec in
+synthesist; picking up any of them is a one-MR chunk of work.
+
 ## v0.10.0 (2026-04-23)
 
 Discipline pass. Eight commits that tighten rune's LLM-correctness
