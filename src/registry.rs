@@ -130,7 +130,7 @@ pub fn ensure_registry(reg: &Registry) -> Result<PathBuf> {
     // Acquire lock before any git/download operations
     let _lock = lock_registry(reg)?;
 
-    if reg.source == "archive" {
+    if reg.source == crate::config::SourceKind::Archive {
         ensure_archive_registry(reg, &repo_dir)?;
     } else if repo_dir.exists() {
         match pull(&repo_dir, reg) {
@@ -704,7 +704,7 @@ pub fn materialize_artifact(
         return Ok(default_path);
     };
 
-    if reg.source == "archive" {
+    if reg.source == crate::config::SourceKind::Archive {
         anyhow::bail!(
             "Version pin `@{ver}` on {name} is not supported for archive-type registry {} -- archive registries have no git history to resolve refs against",
             reg.name
@@ -811,7 +811,13 @@ fn git_rev_parse(repo_dir: &Path, ref_spec: &str) -> Result<String> {
 fn sanitize_ref(ref_spec: &str) -> String {
     ref_spec
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '.' { c } else { '-' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '.' {
+                c
+            } else {
+                '-'
+            }
+        })
         .collect()
 }
 

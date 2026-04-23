@@ -46,18 +46,14 @@ pub fn sync(project_dir: &Path, force: bool) -> Result<u32> {
             };
 
             let repo_dir = registry::ensure_registry(reg)?;
-            let reg_path = match registry::materialize_artifact(
-                reg,
-                name,
-                at,
-                entry.version.as_deref(),
-            ) {
-                Ok(p) => p,
-                Err(e) => {
-                    eprintln!("  {name}: {e}");
-                    continue;
-                }
-            };
+            let reg_path =
+                match registry::materialize_artifact(reg, name, at, entry.version.as_deref()) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        eprintln!("  {name}: {e}");
+                        continue;
+                    }
+                };
 
             if !reg_path.exists() {
                 eprintln!(

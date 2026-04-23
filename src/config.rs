@@ -9,6 +9,25 @@ pub struct Config {
     pub registry: Vec<Registry>,
 }
 
+/// How a registry is fetched. `Git` clones and pulls; `Archive` downloads
+/// a tarball with ETag caching — faster for readonly registries.
+#[derive(Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum SourceKind {
+    #[default]
+    Git,
+    Archive,
+}
+
+impl std::fmt::Display for SourceKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Git => write!(f, "git"),
+            Self::Archive => write!(f, "archive"),
+        }
+    }
+}
+
 /// A named skill registry. Can be git-based or HTTP archive.
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Registry {
@@ -23,11 +42,11 @@ pub struct Registry {
     /// Read-only registries cannot be pushed to. Defaults to false.
     #[serde(default)]
     pub readonly: bool,
-    /// How to fetch: "git" (default) or "archive" (download tarball).
-    /// Archive mode is faster for readonly registries -- downloads a
-    /// tarball instead of cloning. Supports GitHub and GitLab URLs.
-    #[serde(default = "default_source")]
-    pub source: String,
+    /// How to fetch. Archive mode is faster for readonly registries --
+    /// downloads a tarball with ETag caching instead of cloning. Git is
+    /// the default and supports `rune push` and `@version` pins.
+    #[serde(default)]
+    pub source: SourceKind,
     /// Environment variable containing a PAT for HTTPS authentication.
     /// Token is resolved at runtime and injected transiently -- never
     /// persisted in .git/config of cached clones.
@@ -54,10 +73,6 @@ impl Registry {
     pub fn fs_name(&self) -> String {
         self.name.replace('/', "--")
     }
-}
-
-fn default_source() -> String {
-    "git".to_string()
 }
 
 fn default_branch() -> String {
