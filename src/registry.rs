@@ -915,6 +915,30 @@ fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<()> {
     Ok(())
 }
 
+// ── Cache metadata ──────────────────────────────────────────────────
+
+/// Parse a cache metadata filename back to the registry fs_name it belongs
+/// to. Cache dir siblings of a registry tree include:
+///
+///   .<fs_name>.lock              (file lock)
+///   .<fs_name>.etag              (archive ETag)
+///   .<fs_name>-headers.txt       (transient curl headers)
+///   .<fs_name>-archive.tar.gz    (in-progress download)
+///   .<fs_name>-extract           (in-progress extraction)
+///
+/// `rune clean` uses this to decide whether a metadata file belongs to a
+/// registry that is no longer configured. Pulled out into a named function
+/// so the test exercises the same implementation users do, not a copy.
+pub fn parse_cache_metadata_name(filename: &str) -> &str {
+    filename
+        .trim_start_matches('.')
+        .trim_end_matches(".lock")
+        .trim_end_matches(".etag")
+        .trim_end_matches("-headers.txt")
+        .trim_end_matches("-archive.tar.gz")
+        .trim_end_matches("-extract")
+}
+
 // ── Hash operations ─────────────────────────────────────────────────
 
 /// Hash all files in a skill for drift detection. Rejects symlinks and
