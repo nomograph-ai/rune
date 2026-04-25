@@ -1,0 +1,112 @@
+# agent-shape.toml for rune
+#
+# Run with: `jig run agent-shape.toml --tuning-only`
+# Validate rubric vs binary: `jig check agent-shape.toml --binary $(which rune)`
+#
+# Drives jig's runtime-in-the-loop battery to measure whether rune's
+# CLI is shaped so agents reach for correct commands by default.
+# Third subject tool for jig.
+
+[subject]
+name = "rune"
+binary = "rune"
+description = "Registry manager for AI coding agent skills, agents, and rules. Syncs markdown files from git-based registries into .claude/skills/, .claude/agents/, .claude/rules/. Tracks drift via content-hash lockfile and pedigree frontmatter."
+
+[fixture]
+# A real rune fixture needs a fake registry repo + fake project
+# .claude/ dir + a config pointing at them. Scaffolded as a no-op
+# for now; real implementation pending first baseline.
+setup = "scripts/agent-shape-fixture.sh"
+workdir = "fixtures/agent-shape-realistic"
+
+[run]
+n = 10
+models = ["claude-opus-4-7", "claude-sonnet-4-6"]
+turn_cap = 3
+timeout_seconds = 180
+
+[judge]
+model = "claude-haiku-4-5"
+double_score = true
+required_fields = [
+  "score",
+  "first_command",
+  "first_command_existed",
+  "completed",
+  "invented_commands",
+  "fallback_to_sql",
+  "reasoning",
+]
+rubric = """
+You are judging whether an agent completed a CLI task against the
+`rune` tool. rune syncs markdown files (skills / agents / rules) from
+git-based registries into a project's .claude/ directory. It tracks
+drift via a content-hash lockfile and surfaces upstream updates.
+
+Score on a 4-point rubric:
+  1.00  completed correctly, first command attempt was real and worked
+  0.50  completed correctly, but reached for non-existent rune commands first
+  0.25  completed via raw filesystem operations bypassing rune
+  0.00  did not complete
+
+Commands that exist in rune include (non-exhaustive):
+  rune setup | init | sync | check | status | doctor | clean | audit
+  rune add <item> [--from <registry>] [-t skill|agent|rule]
+  rune remove <item>
+  rune push <item>
+  rune ls [--registry <name>]
+  rune browse <registry>
+  rune import <item>@<registry>
+  rune upstream                     # check imported items for updates
+  rune diff <item>                  # show diff vs upstream
+  rune update <item>                # pull upstream changes
+  rune prune                        # remove manifest entries with stale registries
+  rune skill                        # emit the skill file
+  rune completions <shell>          # shell completions
+
+Anything NOT on that list or similar-shaped counts as invented. Note:
+rune has no `rune list` (use `rune ls`); no `rune show` (use `rune ls`
+or `rune diff`); no `rune search` (use `rune browse`).
+
+For each transcript identify:
+  - first_command:         exact shell command the agent first tried
+  - first_command_existed: whether that command exists in rune
+  - completed:             did the agent finish what the user asked
+  - invented_commands:     non-existent rune invocations the agent tried
+  - fallback_to_sql:       did the agent invoke sqlite, grep, awk, or
+                           cat on .claude/ files instead of using rune
+  - reasoning:             one short paragraph
+
+Respond in strict JSON with exactly the fields listed above. No
+markdown fences. No prose outside the JSON object.
+"""
+
+# Cross-referenced by `jig check --binary $(which rune)`.
+[commands]
+top_level = [
+  "setup",
+  "init",
+  "add",
+  "prune",
+  "remove",
+  "check",
+  "sync",
+  "push",
+  "ls",
+  "browse",
+  "import",
+  "upstream",
+  "diff",
+  "update",
+  "status",
+  "audit",
+  "clean",
+  "doctor",
+  "skill",
+  "completions",
+]
+
+# Tuning tasks: empty until fixture exists.
+[tasks]
+tuning = []
+holdout = []
