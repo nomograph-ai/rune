@@ -49,6 +49,53 @@ pub fn ls(project_dir: &Path) -> Result<()> {
     Ok(())
 }
 
+/// List configured registries with their cache state and item counts.
+///
+/// Backs both `rune registry list` and `rune config list`. Agents reach
+/// for both phrasings; both succeed with the same output.
+pub fn list_registries() -> Result<()> {
+    let config = Config::load()?;
+
+    if config.registry.is_empty() {
+        eprintln!(
+            "{}",
+            color::dim("No registries configured. Edit ~/.config/rune/config.toml.")
+        );
+        return Ok(());
+    }
+
+    eprintln!("{}", color::bold("registries"));
+    let cache_dir = Config::cache_dir()?;
+    for reg in &config.registry {
+        let repo_dir = cache_dir.join(reg.fs_name());
+        let ro = if reg.readonly {
+            color::dim(" (ro)")
+        } else {
+            String::new()
+        };
+        let src = color::dim(&format!(" [{}]", reg.source));
+
+        if repo_dir.exists() {
+            let skills =
+                registry::list_artifacts(&repo_dir, reg, crate::manifest::ArtifactType::Skill)
+                    .unwrap_or_default();
+            eprintln!(
+                "  {}{ro}{src}: {} skills",
+                color::cyan(&reg.name),
+                skills.len()
+            );
+        } else {
+            eprintln!(
+                "  {}{ro}{src}: {}",
+                color::cyan(&reg.name),
+                color::dim("not cached")
+            );
+        }
+    }
+
+    Ok(())
+}
+
 /// List all available items in a specific registry.
 pub fn ls_registry(registry_name: &str) -> Result<()> {
     let config = Config::load()?;

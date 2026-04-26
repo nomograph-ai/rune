@@ -54,10 +54,12 @@ Score on a 4-point rubric:
 
 Commands that exist in rune include (non-exhaustive):
   rune setup | init | sync | check | status | doctor | clean | audit
-  rune add <item> [--from <registry>] [-t skill|agent|rule]
+  rune add <item> [--from <registry>|--registry <registry>] [-t skill|agent|rule]
   rune remove <item>
   rune push <item>
   rune ls [--registry <name>]
+  rune registry list                # list configured registries
+  rune config list                  # alias for `rune registry list`
   rune browse <registry>
   rune import <item>@<registry>
   rune upstream                     # check imported items for updates
@@ -101,6 +103,8 @@ top_level = [
   "upstream",
   "diff",
   "update",
+  "registry",
+  "config",
   "status",
   "audit",
   "clean",

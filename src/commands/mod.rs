@@ -21,7 +21,7 @@ pub use check::check;
 pub use clean::clean;
 pub use crud::{add_many, prune, push, remove};
 pub use doctor::doctor;
-pub use ls::{ls, ls_registry};
+pub use ls::{list_registries, ls, ls_registry};
 pub use status::status;
 pub use sync::sync;
 pub use upstream::{browse, diff, import, update, upstream};
