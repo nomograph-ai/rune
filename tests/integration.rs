@@ -1092,7 +1092,10 @@ fn skill_path_typed_vs_legacy() {
     // Legacy flat layout: no skills/ subdir → root
     let p = rune::registry::skill_path(base, &reg, "tidy");
     assert_eq!(p, base.join("tidy.md"));
-    assert_eq!(rune::registry::skill_path_relative(base, &reg, "tidy"), "tidy");
+    assert_eq!(
+        rune::registry::skill_path_relative(base, &reg, "tidy"),
+        "tidy"
+    );
 
     // Typed-subdir layout: skills/ exists → use it
     fs::create_dir_all(base.join("skills")).unwrap();

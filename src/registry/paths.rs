@@ -22,13 +22,7 @@ pub fn skill_path_with_hint(
     skill_name: &str,
     local_is_dir: Option<bool>,
 ) -> PathBuf {
-    artifact_path_with_hint(
-        repo_dir,
-        reg,
-        skill_name,
-        ArtifactType::Skill,
-        local_is_dir,
-    )
+    artifact_path_with_hint(repo_dir, reg, skill_name, ArtifactType::Skill, local_is_dir)
 }
 
 /// The relative path of a skill within a registry (for git log queries).
