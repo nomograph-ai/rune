@@ -3,9 +3,28 @@
   <rect x="20" y="20" width="216" height="216" fill="none" stroke="#2c2417" stroke-width="4"/>
   <rect x="28" y="28" width="200" height="36" fill="#2c2417"/>
   <text x="128" y="53" text-anchor="middle" font-size="20" fill="#faf6ed" font-weight="bold">rune</text>
-  <!-- Ansuz rune (communication, knowledge) -->
-  <line x1="128" y1="78" x2="128" y2="210" stroke="#2c2417" stroke-width="8" stroke-linecap="round"/>
-  <line x1="128" y1="110" x2="168" y2="90" stroke="#2c2417" stroke-width="6" stroke-linecap="round"/>
-  <line x1="128" y1="140" x2="168" y2="120" stroke="#2c2417" stroke-width="6" stroke-linecap="round"/>
+
+  <!-- Iconic schematic: artifact -> registry stamp.
+       Five elements: source artifact card, push arrow, registry frame,
+       Ansuz mark inside, pedigree base line. -->
+
+  <!-- Source artifact card (left) -->
+  <rect x="48" y="100" width="56" height="72" fill="none" stroke="#2c2417" stroke-width="4"/>
+  <line x1="58" y1="118" x2="94" y2="118" stroke="#2c2417" stroke-width="3"/>
+  <line x1="58" y1="132" x2="94" y2="132" stroke="#2c2417" stroke-width="3"/>
+  <line x1="58" y1="146" x2="80" y2="146" stroke="#2c2417" stroke-width="3"/>
+
+  <!-- Push arrow -->
+  <line x1="112" y1="136" x2="148" y2="136" stroke="#2c2417" stroke-width="6" stroke-linecap="round"/>
+  <polygon points="148,124 162,136 148,148" fill="#2c2417"/>
+
+  <!-- Registry frame (right) with Ansuz rune inside -->
+  <rect x="170" y="100" width="56" height="72" fill="none" stroke="#2c2417" stroke-width="4"/>
+  <!-- Ansuz: vertical staff with two descending side-strokes (knowledge / inscription) -->
+  <line x1="190" y1="112" x2="190" y2="160" stroke="#2c2417" stroke-width="4" stroke-linecap="round"/>
+  <line x1="190" y1="122" x2="212" y2="116" stroke="#2c2417" stroke-width="4" stroke-linecap="round"/>
+  <line x1="190" y1="138" x2="212" y2="132" stroke="#2c2417" stroke-width="4" stroke-linecap="round"/>
+
+  <!-- Pedigree base line -->
   <line x1="60" y1="224" x2="196" y2="224" stroke="#c4b99a" stroke-width="2"/>
 </svg>
