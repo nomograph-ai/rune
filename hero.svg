@@ -3,114 +3,102 @@
     <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M 0 0 L 10 5 L 0 10 z" fill="#2c2417"/>
     </marker>
-    <marker id="arr-dim" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#c4b99a"/>
-    </marker>
   </defs>
   <rect x="0" y="0" width="1200" height="430" fill="#faf6ed" stroke="#2c2417" stroke-width="3"/>
 
+  <!-- Title bar -->
   <rect x="0" y="0" width="1200" height="36" fill="#2c2417"/>
-  <text x="16" y="24" font-family="'IBM Plex Mono', monospace" font-size="14" fill="#faf6ed" font-weight="bold">rune -- skill registry manager</text>
-  <text x="1184" y="24" font-family="'IBM Plex Mono', monospace" font-size="11" fill="#c4b99a" text-anchor="end">syncs inscribed knowledge from git registries</text>
+  <text x="16" y="24" font-family="'IBM Plex Mono', monospace" font-size="14" fill="#faf6ed" font-weight="bold">rune -- registry-fronting manager for AI agent artifacts</text>
+  <text x="1184" y="24" font-family="'IBM Plex Mono', monospace" font-size="11" fill="#c4b99a" text-anchor="end">push is authoritative -- not git commit</text>
 
-  <!-- Left: Registries -->
-  <rect x="40" y="60" width="260" height="280" fill="none" stroke="#c4b99a" stroke-width="1.5" stroke-dasharray="6,3"/>
-  <text x="170" y="82" font-family="'IBM Plex Mono', monospace" font-size="10" fill="#6b5d4f" text-anchor="middle" font-weight="bold">REGISTRIES</text>
+  <!-- Contract bar -->
+  <rect x="40" y="52" width="1120" height="30" fill="none" stroke="#c4b99a" stroke-width="1"/>
+  <text x="56" y="72" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">push (publish) -> add (consume) -> sync (refresh) -> doctor (diagnose)   ::   pedigree via skill_path / artifact_path</text>
+  <text x="1144" y="72" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#2c2417" text-anchor="end">layout-aware</text>
 
-  <rect x="56" y="96" width="228" height="100" fill="none" stroke="#2c2417" stroke-width="1.5"/>
-  <rect x="56" y="96" width="228" height="22" fill="#2c2417"/>
-  <text x="170" y="112" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#faf6ed" text-anchor="middle">public (any git repo)</text>
-  <text x="72" y="134" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">tidy.md</text>
-  <text x="72" y="150" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">iconography.md</text>
-  <text x="72" y="166" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">research/SKILL.md</text>
-  <text x="180" y="134" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">gitlab/SKILL.md</text>
-  <text x="180" y="150" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">mirror.md</text>
-  <text x="180" y="166" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">release.md</text>
+  <!-- Left: Inputs -->
+  <rect x="40" y="100" width="280" height="250" fill="none" stroke="#2c2417" stroke-width="2"/>
+  <rect x="40" y="100" width="280" height="28" fill="#2c2417"/>
+  <text x="180" y="118" font-family="'IBM Plex Mono', monospace" font-size="11" fill="#faf6ed" text-anchor="middle" font-weight="bold">INPUTS</text>
 
-  <rect x="56" y="210" width="228" height="80" fill="none" stroke="#2c2417" stroke-width="1.5"/>
-  <rect x="56" y="210" width="228" height="22" fill="#2c2417"/>
-  <text x="170" y="226" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#faf6ed" text-anchor="middle">private (authenticated)</text>
-  <text x="72" y="248" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">voice.md</text>
-  <text x="72" y="264" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">cadence.md</text>
-  <text x="72" y="280" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">glean.md</text>
-  <text x="180" y="248" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">gws.md</text>
-  <text x="180" y="264" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">dkg.md</text>
-  <text x="180" y="280" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">gcloud.md</text>
+  <text x="56" y="148" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#2c2417" font-weight="bold">artifacts</text>
+  <text x="56" y="164" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">  skills    .claude/skills/</text>
+  <text x="56" y="180" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">  agents    .claude/agents/</text>
+  <text x="56" y="196" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">  rules     .claude/rules/</text>
 
-  <text x="170" y="316" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f" text-anchor="middle">any git host, any visibility</text>
+  <line x1="56" y1="210" x2="304" y2="210" stroke="#c4b99a" stroke-width="1"/>
 
-  <!-- Arrows: registries -> rune -->
-  <line x1="300" y1="150" x2="390" y2="185" stroke="#2c2417" stroke-width="1.5" marker-end="url(#arr)"/>
-  <line x1="300" y1="250" x2="390" y2="215" stroke="#2c2417" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="56" y="230" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#2c2417" font-weight="bold">registries (git)</text>
+  <text x="56" y="246" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">  writable   push + add</text>
+  <text x="56" y="262" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">  readonly   add only (mirrors)</text>
+  <text x="56" y="278" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">  priority   first match wins</text>
 
-  <!-- Center: rune CLI -->
-  <rect x="400" y="100" width="200" height="240" fill="none" stroke="#2c2417" stroke-width="2.5"/>
-  <rect x="400" y="100" width="200" height="28" fill="#2c2417"/>
-  <text x="500" y="118" font-family="'IBM Plex Mono', monospace" font-size="12" fill="#faf6ed" text-anchor="middle" font-weight="bold">rune</text>
+  <line x1="56" y1="292" x2="304" y2="292" stroke="#c4b99a" stroke-width="1"/>
 
-  <text x="416" y="148" font-family="'IBM Plex Mono', monospace" font-size="10" fill="#2c2417" font-weight="bold">sync</text>
-  <text x="416" y="164" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">  pull updates from registries</text>
+  <text x="56" y="312" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#2c2417" font-weight="bold">manifest</text>
+  <text x="56" y="328" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">  .claude/rune.toml declares</text>
+  <text x="56" y="344" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">  what this project consumes</text>
 
-  <text x="416" y="188" font-family="'IBM Plex Mono', monospace" font-size="10" fill="#2c2417" font-weight="bold">check</text>
-  <text x="416" y="204" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">  hash-based drift detection</text>
+  <!-- Arrow inputs -> process -->
+  <line x1="320" y1="225" x2="370" y2="225" stroke="#2c2417" stroke-width="1.5" marker-end="url(#arr)"/>
 
-  <text x="416" y="228" font-family="'IBM Plex Mono', monospace" font-size="10" fill="#2c2417" font-weight="bold">push</text>
-  <text x="416" y="244" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">  send local edits upstream</text>
+  <!-- Center: Process -->
+  <rect x="380" y="100" width="280" height="250" fill="none" stroke="#2c2417" stroke-width="2"/>
+  <rect x="380" y="100" width="280" height="28" fill="#2c2417"/>
+  <text x="520" y="118" font-family="'IBM Plex Mono', monospace" font-size="11" fill="#faf6ed" text-anchor="middle" font-weight="bold">PROCESS</text>
 
-  <text x="416" y="268" font-family="'IBM Plex Mono', monospace" font-size="10" fill="#2c2417" font-weight="bold">add / ls</text>
-  <text x="416" y="284" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">  manage skills per project</text>
+  <text x="396" y="148" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#2c2417" font-weight="bold">rune push</text>
+  <text x="396" y="164" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">  publish to writable registry</text>
 
-  <text x="500" y="320" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f" text-anchor="middle">priority resolution</text>
-  <text x="500" y="334" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f" text-anchor="middle">directory skill support</text>
+  <text x="396" y="188" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#2c2417" font-weight="bold">rune add</text>
+  <text x="396" y="204" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">  consume into project</text>
 
-  <!-- Arrows: rune -> projects -->
-  <line x1="600" y1="180" x2="690" y2="140" stroke="#2c2417" stroke-width="1.5" marker-end="url(#arr)"/>
-  <line x1="600" y1="200" x2="690" y2="215" stroke="#2c2417" stroke-width="1.5" marker-end="url(#arr)"/>
-  <line x1="600" y1="240" x2="690" y2="290" stroke="#2c2417" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="396" y="228" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#2c2417" font-weight="bold">rune sync</text>
+  <text x="396" y="244" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">  refresh from upstream</text>
 
-  <!-- Push arrow back -->
-  <line x1="690" y1="160" x2="600" y2="195" stroke="#6b5d4f" stroke-width="1" stroke-dasharray="5,3" marker-end="url(#arr-dim)"/>
+  <text x="396" y="268" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#2c2417" font-weight="bold">rune doctor</text>
+  <text x="396" y="284" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">  diagnose drift</text>
 
-  <!-- Right: Projects -->
-  <rect x="700" y="60" width="460" height="280" fill="none" stroke="#c4b99a" stroke-width="1.5" stroke-dasharray="6,3"/>
-  <text x="930" y="82" font-family="'IBM Plex Mono', monospace" font-size="10" fill="#6b5d4f" text-anchor="middle" font-weight="bold">PROJECTS (.claude/skills/)</text>
+  <line x1="396" y1="298" x2="644" y2="298" stroke="#c4b99a" stroke-width="1"/>
 
-  <rect x="716" y="96" width="200" height="72" fill="none" stroke="#2c2417" stroke-width="1.5"/>
-  <rect x="716" y="96" width="200" height="22" fill="#2c2417"/>
-  <text x="816" y="112" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#faf6ed" text-anchor="middle">project-A</text>
-  <text x="732" y="132" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">tidy.md, voice.md</text>
-  <text x="732" y="148" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">research/SKILL.md</text>
-  <text x="732" y="164" font-family="'IBM Plex Mono', monospace" font-size="8" fill="#c4b99a">rune.toml</text>
+  <text x="520" y="316" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f" text-anchor="middle">layout-aware lookup</text>
+  <text x="520" y="332" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f" text-anchor="middle">content-hash drift detection</text>
 
-  <rect x="716" y="182" width="200" height="72" fill="none" stroke="#2c2417" stroke-width="1.5"/>
-  <rect x="716" y="182" width="200" height="22" fill="#2c2417"/>
-  <text x="816" y="198" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#faf6ed" text-anchor="middle">project-B</text>
-  <text x="732" y="218" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">tidy.md, gitlab/SKILL.md</text>
-  <text x="732" y="234" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">mirror.md</text>
-  <text x="732" y="250" font-family="'IBM Plex Mono', monospace" font-size="8" fill="#c4b99a">rune.toml</text>
+  <!-- Arrow process -> outputs -->
+  <line x1="660" y1="225" x2="710" y2="225" stroke="#2c2417" stroke-width="1.5" marker-end="url(#arr)"/>
 
-  <rect x="716" y="268" width="200" height="52" fill="none" stroke="#2c2417" stroke-width="1.5"/>
-  <rect x="716" y="268" width="200" height="22" fill="#2c2417"/>
-  <text x="816" y="284" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#faf6ed" text-anchor="middle">project-C</text>
-  <text x="732" y="304" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">tidy.md, cadence.md</text>
-  <text x="732" y="316" font-family="'IBM Plex Mono', monospace" font-size="8" fill="#c4b99a">rune.toml</text>
+  <!-- Right: Outputs -->
+  <rect x="720" y="100" width="440" height="250" fill="none" stroke="#2c2417" stroke-width="2"/>
+  <rect x="720" y="100" width="440" height="28" fill="#2c2417"/>
+  <text x="940" y="118" font-family="'IBM Plex Mono', monospace" font-size="11" fill="#faf6ed" text-anchor="middle" font-weight="bold">OUTPUTS</text>
 
-  <!-- Key points right side -->
-  <text x="940" y="120" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#2c2417" font-weight="bold">agentskills.io</text>
-  <text x="940" y="136" font-family="'IBM Plex Mono', monospace" font-size="8" fill="#6b5d4f">compatible</text>
+  <text x="736" y="148" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#2c2417" font-weight="bold">registry state</text>
+  <text x="736" y="164" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">  current pedigree per artifact</text>
+  <text x="736" y="180" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">  upstream commit + import date</text>
 
-  <text x="940" y="196" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#2c2417" font-weight="bold">any agent</text>
-  <text x="940" y="212" font-family="'IBM Plex Mono', monospace" font-size="8" fill="#6b5d4f">Claude, Cursor,</text>
-  <text x="940" y="226" font-family="'IBM Plex Mono', monospace" font-size="8" fill="#6b5d4f">Copilot, Gemini</text>
+  <line x1="736" y1="194" x2="1144" y2="194" stroke="#c4b99a" stroke-width="1"/>
 
-  <text x="940" y="276" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#2c2417" font-weight="bold">drift detection</text>
-  <text x="940" y="292" font-family="'IBM Plex Mono', monospace" font-size="8" fill="#6b5d4f">hash-based</text>
+  <text x="736" y="214" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#2c2417" font-weight="bold">project lockfile</text>
+  <text x="736" y="230" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">  .claude/rune.lock content hashes</text>
+  <text x="736" y="246" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">  reproducible syncs</text>
+
+  <line x1="736" y1="260" x2="1144" y2="260" stroke="#c4b99a" stroke-width="1"/>
+
+  <text x="736" y="280" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#2c2417" font-weight="bold">drift diagnostics</text>
+  <text x="736" y="296" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#2c2417">  rune ls</text>
+  <text x="900" y="296" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">artifacts and status</text>
+  <text x="736" y="312" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#2c2417">  rune status</text>
+  <text x="900" y="312" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">combined summary</text>
+  <text x="736" y="328" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#2c2417">  rune diff</text>
+  <text x="900" y="328" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">local vs upstream</text>
+  <text x="736" y="344" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#2c2417">  rune audit</text>
+  <text x="900" y="344" font-family="'IBM Plex Mono', monospace" font-size="9" fill="#6b5d4f">content regressions</text>
 
   <!-- Footer -->
-  <line x1="40" y1="360" x2="1160" y2="360" stroke="#c4b99a" stroke-width="1"/>
-  <text x="600" y="380" font-family="'IBM Plex Mono', monospace" font-size="10" fill="#6b5d4f" text-anchor="middle">registries are git repos -- skills are markdown -- rune keeps them current</text>
-  <text x="590" y="408" text-anchor="middle" fill="#2c2417" font-family="'IBM Plex Mono', monospace" font-size="9" font-weight="600">Built with GitLab</text>
-  <g transform="translate(634, 397) scale(0.045)">
+  <line x1="40" y1="370" x2="1160" y2="370" stroke="#c4b99a" stroke-width="1"/>
+  <text x="600" y="392" font-family="'IBM Plex Mono', monospace" font-size="10" fill="#6b5d4f" text-anchor="middle">artifacts move between registries and projects -- pedigree carries the lineage</text>
+  <text x="590" y="416" text-anchor="middle" fill="#2c2417" font-family="'IBM Plex Mono', monospace" font-size="9" font-weight="600">Built with GitLab</text>
+  <g transform="translate(634, 405) scale(0.045)">
     <path d="M282.83,170.73l-.27-.69-26.14-68.22a6.81,6.81,0,0,0-2.69-3.24,7,7,0,0,0-8,.43,7,7,0,0,0-2.32,3.52l-17.65,54H154.29l-17.65-54A6.86,6.86,0,0,0,134.32,99a7,7,0,0,0-8-.43,6.87,6.87,0,0,0-2.69,3.24L97.44,170l-.26.69a48.54,48.54,0,0,0,16.1,56.1l.09.07.24.17,39.82,29.82,19.7,14.91,12,9.06a8.07,8.07,0,0,0,9.76,0l12-9.06,19.7-14.91,40.06-30,.1-.08A48.56,48.56,0,0,0,282.83,170.73Z" fill="#E24329"/>
     <path d="M282.83,170.73l-.27-.69a88.3,88.3,0,0,0-35.15,15.8L190,229.25c19.55,14.79,36.57,27.64,36.57,27.64l40.06-30,.1-.08A48.56,48.56,0,0,0,282.83,170.73Z" fill="#FC6D26"/>
     <path d="M153.43,256.89l19.7,14.91,12,9.06a8.07,8.07,0,0,0,9.76,0l12-9.06,19.7-14.91S209.55,244,190,229.25C170.45,244,153.43,256.89,153.43,256.89Z" fill="#FCA326"/>
