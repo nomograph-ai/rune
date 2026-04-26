@@ -11,41 +11,44 @@ pub fn skill_path(repo_dir: &Path, reg: &Registry, skill_name: &str) -> PathBuf 
 }
 
 /// Get the path to a skill in a registry with a local format hint.
+///
+/// Probes typed-subdirectory layout (`skills/<name>`) first, falls back
+/// to legacy flat layout (`<name>` at registry root). Mirrors
+/// `artifact_path_with_hint` so writable registries using either layout
+/// are found by the upstream-pedigree scanner.
 pub fn skill_path_with_hint(
     repo_dir: &Path,
     reg: &Registry,
     skill_name: &str,
     local_is_dir: Option<bool>,
 ) -> PathBuf {
-    let base = match &reg.path {
-        Some(p) => {
-            let resolved = repo_dir.join(p);
-            if !resolved.starts_with(repo_dir) {
-                return repo_dir.join(format!("{skill_name}.md"));
-            }
-            resolved
-        }
-        None => repo_dir.to_path_buf(),
-    };
-
-    let dir_path = base.join(skill_name);
-    let is_real_dir = dir_path
-        .symlink_metadata()
-        .map(|m| m.file_type().is_dir())
-        .unwrap_or(false);
-
-    if is_real_dir || local_is_dir == Some(true) {
-        return dir_path;
-    }
-
-    base.join(format!("{skill_name}.md"))
+    artifact_path_with_hint(
+        repo_dir,
+        reg,
+        skill_name,
+        ArtifactType::Skill,
+        local_is_dir,
+    )
 }
 
 /// The relative path of a skill within a registry (for git log queries).
-pub fn skill_path_relative(reg: &Registry, skill_name: &str) -> String {
-    match &reg.path {
-        Some(p) => format!("{p}/{skill_name}"),
-        None => skill_name.to_string(),
+///
+/// Probes the registry's on-disk layout: typed-subdir (`<reg>/skills/<name>`)
+/// if `skills/` exists, else legacy flat (`<reg>/<name>`). Without filesystem
+/// probing, git log queries against typed-subdir registries would return
+/// no history.
+pub fn skill_path_relative(repo_dir: &Path, reg: &Registry, skill_name: &str) -> String {
+    let typed = match &reg.path {
+        Some(p) => repo_dir.join(p).join(ArtifactType::Skill.section()),
+        None => repo_dir.join(ArtifactType::Skill.section()),
+    };
+    let use_typed = typed.is_dir();
+
+    match (&reg.path, use_typed) {
+        (Some(p), true) => format!("{p}/{}/{skill_name}", ArtifactType::Skill.section()),
+        (Some(p), false) => format!("{p}/{skill_name}"),
+        (None, true) => format!("{}/{skill_name}", ArtifactType::Skill.section()),
+        (None, false) => skill_name.to_string(),
     }
 }
 

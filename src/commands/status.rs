@@ -132,7 +132,7 @@ pub fn status(project_dir: &Path) -> Result<()> {
             if let Some(source_reg) = source_reg
                 && let Ok(source_dir) = registry::ensure_registry(source_reg)
             {
-                let skill_rel = registry::skill_path_relative(source_reg, skill_name);
+                let skill_rel = registry::skill_path_relative(&source_dir, source_reg, skill_name);
                 let upstream_commit = registry::skill_commit(&source_dir, &skill_rel)
                     .unwrap_or_else(|| "unknown".to_string());
                 if upstream_commit != imported_commit {

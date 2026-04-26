@@ -136,14 +136,12 @@ pub fn import(skill_ref: &str, target_name: Option<&str>) -> Result<()> {
         );
     }
 
-    // Determine the origin path (how the skill is stored in the upstream repo)
-    let origin_path = match &source_reg.path {
-        Some(p) => format!("{p}/{skill_name}"),
-        None => skill_name.to_string(),
-    };
+    // Determine the origin path (how the skill is stored in the upstream repo).
+    // Layout-aware: typed-subdir (`<reg>/skills/<name>`) or flat (`<reg>/<name>`).
+    let skill_rel = registry::skill_path_relative(&source_dir, source_reg, skill_name);
+    let origin_path = skill_rel.clone();
 
     // Get the skill-specific commit hash from the upstream registry
-    let skill_rel = registry::skill_path_relative(source_reg, skill_name);
     let upstream_commit =
         registry::skill_commit(&source_dir, &skill_rel).unwrap_or_else(|| "unknown".to_string());
 
@@ -236,7 +234,7 @@ pub fn upstream(quiet: bool) -> Result<()> {
 
             // Check the specific skill's last commit in the upstream registry
             let source_dir = registry::ensure_registry(source_reg)?;
-            let skill_rel = registry::skill_path_relative(source_reg, skill_name);
+            let skill_rel = registry::skill_path_relative(&source_dir, source_reg, skill_name);
             let upstream_commit = registry::skill_commit(&source_dir, &skill_rel)
                 .unwrap_or_else(|| "unknown".to_string());
 
@@ -431,7 +429,7 @@ pub fn update(skill_name: &str, force: bool) -> Result<()> {
         );
     }
 
-    let skill_rel = registry::skill_path_relative(source_reg, skill_name);
+    let skill_rel = registry::skill_path_relative(&source_dir, source_reg, skill_name);
     let upstream_commit =
         registry::skill_commit(&source_dir, &skill_rel).unwrap_or_else(|| "unknown".to_string());
 

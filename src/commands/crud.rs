@@ -81,7 +81,7 @@ pub fn add(
     let mut lockfile = Lockfile::load(project_dir)?;
     let hash = registry::skill_hash(&local_path).unwrap_or_default();
     let item_rel = if artifact_type == ArtifactType::Skill {
-        registry::skill_path_relative(reg, name)
+        registry::skill_path_relative(&repo_dir, reg, name)
     } else {
         registry::artifact_path_relative(reg, name, artifact_type)
     };
