@@ -68,8 +68,9 @@ enum Commands {
         /// Item name(s) to add
         #[arg(required_unless_present = "all")]
         names: Vec<String>,
-        /// Registry to add from
-        #[arg(long)]
+        /// Registry to add from. `--registry` is accepted as an alias for
+        /// agents that reach for the noun form.
+        #[arg(long, visible_alias = "registry")]
         from: Option<String>,
         /// Add all items of the given type from the specified registry (requires --from)
         #[arg(long, requires = "from")]
@@ -164,6 +165,14 @@ enum Commands {
         force: bool,
     },
 
+    /// Inspect configured registries (discovery alias for `rune ls --registry`)
+    #[command(subcommand)]
+    Registry(RegistryCommand),
+
+    /// Inspect rune configuration (alias namespace for discoverability)
+    #[command(subcommand)]
+    Config(ConfigCommand),
+
     /// Combined status: registries, project items, upstream updates
     Status,
 
@@ -188,6 +197,24 @@ enum Commands {
         /// Shell (zsh, bash, fish)
         shell: String,
     },
+}
+
+/// Subcommands under `rune registry`. Currently a thin namespace whose
+/// `list` subcommand prints the same output as `rune config list`.
+#[derive(Subcommand)]
+enum RegistryCommand {
+    /// List configured registries with cache state and skill counts
+    #[command(visible_alias = "ls")]
+    List,
+}
+
+/// Subcommands under `rune config`. Currently exposes `list` as a
+/// discoverability alias for `rune registry list`.
+#[derive(Subcommand)]
+enum ConfigCommand {
+    /// List configured registries (alias for `rune registry list`)
+    #[command(visible_alias = "ls")]
+    List,
 }
 
 /// Parse a --type flag string into an ArtifactType.
@@ -284,6 +311,8 @@ fn main() -> Result<()> {
         Commands::Upstream { quiet } => commands::upstream(quiet),
         Commands::Diff { skill } => commands::diff(&skill),
         Commands::Update { skill, force } => commands::update(&skill, force),
+        Commands::Registry(RegistryCommand::List) => commands::list_registries(),
+        Commands::Config(ConfigCommand::List) => commands::list_registries(),
         Commands::Status => commands::status(&project_dir),
         Commands::Audit => commands::audit(),
         Commands::Clean => commands::clean(),
