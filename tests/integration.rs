@@ -1072,6 +1072,44 @@ fn artifact_path_typed_vs_legacy() {
 }
 
 #[test]
+fn skill_path_typed_vs_legacy() {
+    let tmp = tempfile::tempdir().unwrap();
+    let base = tmp.path();
+
+    let reg = rune::config::Registry {
+        name: "test".to_string(),
+        url: "unused".to_string(),
+        path: None,
+        branch: "main".to_string(),
+        readonly: false,
+        source: rune::config::SourceKind::Git,
+        token_env: None,
+        git_email: None,
+        git_name: None,
+        aliases: Vec::new(),
+    };
+
+    // Legacy flat layout: no skills/ subdir → root
+    let p = rune::registry::skill_path(base, &reg, "tidy");
+    assert_eq!(p, base.join("tidy.md"));
+    assert_eq!(rune::registry::skill_path_relative(base, &reg, "tidy"), "tidy");
+
+    // Typed-subdir layout: skills/ exists → use it
+    fs::create_dir_all(base.join("skills")).unwrap();
+    let p = rune::registry::skill_path(base, &reg, "tidy");
+    assert_eq!(p, base.join("skills").join("tidy.md"));
+    assert_eq!(
+        rune::registry::skill_path_relative(base, &reg, "tidy"),
+        "skills/tidy"
+    );
+
+    // Directory skill in typed layout
+    fs::create_dir_all(base.join("skills").join("voice")).unwrap();
+    let p = rune::registry::skill_path(base, &reg, "voice");
+    assert_eq!(p, base.join("skills").join("voice"));
+}
+
+#[test]
 fn artifact_type_parse() {
     use rune::manifest::ArtifactType;
 

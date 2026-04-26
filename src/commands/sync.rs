@@ -161,7 +161,7 @@ pub fn sync(project_dir: &Path, force: bool) -> Result<u32> {
             if !dry_run {
                 let hash = registry::skill_hash(&local_path).unwrap_or_default();
                 let item_rel = if at == ArtifactType::Skill {
-                    registry::skill_path_relative(reg, name)
+                    registry::skill_path_relative(&repo_dir, reg, name)
                 } else {
                     registry::artifact_path_relative(reg, name, at)
                 };
