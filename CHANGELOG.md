@@ -1,5 +1,37 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- **`agent-shape.toml` at repo root.** 20-subcommand adoption stub for the
+  jig methodology, cross-validated via `jig check --binary` so the
+  manifest stays consistent with the actual CLI surface.
+- **`scripts/agent-shape-fixture.sh`.** Idempotent fixture builder that
+  sets up three git registries (one writable, two readonly mirrors) plus
+  a project containing six items spanning current, drifted,
+  registry-missing, and upstream-advanced states. Used as the harness
+  for agent-shape baselining.
+- **5 tuning tasks** under the agent-shape work, exercising the fixture
+  states above.
+- **Treatment v0 discoverability aliases.** `rune registry list` now has
+  a parent `registry` command with a `ls` alias, `rune config list`
+  picks up an `ls` alias, and `rune add --registry` is exposed as a
+  visible alias for `--from`. Targets the most common path drift the
+  agent-shape baseline surfaced.
+- **`hero.svg` and `avatar.svg`** in the nomograph paper-palette OV-1
+  grammar, plus a `CODEOWNERS` file.
+
+### Fixed
+
+- **`skill_path` is now layout-aware.** It falls back from the typed
+  subdirectory layout (`skills/<name>`) to the legacy flat layout
+  (`<name>` at registry root) the same way `artifact_path` already did.
+  Without this fix, `rune upstream` could not find imported skills in
+  writable registries that used the typed-subdirectory layout. Includes
+  a `skill_path_typed_vs_legacy` regression test covering both layouts
+  plus the directory-skill case.
+
 ## v0.14.0 (2026-04-23)
 
 ### Added
