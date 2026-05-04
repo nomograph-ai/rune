@@ -10,3 +10,9 @@
 
 # Agent-shape baseline run logs (raw stdout/stderr from harness invocations)
 agent-shape-reports/*.run.log
+
+# `.claude/` is local-only: rune subscriptions, lockfile, and synced skill
+# content are all per-developer state. Run `rune setup` then `rune sync` on
+# a fresh clone to materialize.
+.claude/
+AGENTS.md
