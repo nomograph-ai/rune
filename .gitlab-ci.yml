@@ -1,11 +1,14 @@
 include:
   - template: Jobs/Secret-Detection.gitlab-ci.yml
-  - component: gitlab.com/nomograph/pipeline/rust-cli@v2.4.6
+  - component: gitlab.com/nomograph/pipeline/rust-cli@v2.6.0
     inputs:
       binary_name: rune
       project_description: "Skill registry manager for AI coding agents."
       audit_allow_failure: false
       crates_publish: true
+  - component: gitlab.com/nomograph/pipeline/agent-shape@v2.6.0
+    inputs:
+      binary_name: rune
 
 stages: [test, build, sign, publish, release, notify]
 
@@ -24,6 +27,18 @@ shellcheck:
   script:
     - shellcheck -s bash resources/hook.sh
     - shellcheck -s sh scripts/check-file-sizes.sh
+
+# Backstop against the .agent/skills recurrence class. If any committed
+# symlink in this repo resolves to an absolute path, fail before CI
+# spends time on the heavier stages. The script is a few lines of bash;
+# the cost is negligible. See scripts/check-symlinks.sh for rationale.
+check-symlinks:
+  stage: test
+  image: alpine:3.19
+  before_script:
+    - apk add --no-cache bash git
+  script:
+    - bash scripts/check-symlinks.sh
 
 # Nudge the kits registry to re-sense on tag push (kit-registry@v3.1.0+).
 notify-kits:
