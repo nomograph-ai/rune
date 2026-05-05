@@ -291,5 +291,6 @@ auto-detected from the manifest when omitted.
 | `--dry-run` | Show what would change without mutating |
 | `--project <dir>` | Target a different project directory |
 
----
-Built in the Den by Tanuki and Andrew Dunn, April 2026.
+## License
+
+MIT. See [LICENSE](LICENSE).
