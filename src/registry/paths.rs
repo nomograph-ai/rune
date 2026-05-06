@@ -152,9 +152,14 @@ pub fn list_artifacts(
             continue;
         }
 
-        // Skip subdirectories that are type names (skills/, agents/, rules/)
-        // to avoid listing them as items in legacy flat registries
-        if ft.is_dir() && matches!(name.as_str(), "skills" | "agents" | "rules") {
+        // Skip subdirectories that are type names so the typed-subdir
+        // layout doesn't show up as an "item" in legacy flat registries.
+        if ft.is_dir()
+            && matches!(
+                name.as_str(),
+                "skills" | "agents" | "rules" | "prompt-templates" | "mcps"
+            )
+        {
             continue;
         }
 

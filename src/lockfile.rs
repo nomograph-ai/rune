@@ -18,6 +18,16 @@ pub struct Lockfile {
 
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub rules: BTreeMap<String, LockedSkill>,
+
+    #[serde(
+        default,
+        rename = "prompt-templates",
+        skip_serializing_if = "BTreeMap::is_empty"
+    )]
+    pub prompt_templates: BTreeMap<String, LockedSkill>,
+
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub mcps: BTreeMap<String, LockedSkill>,
 }
 
 /// A locked entry -- records what was installed.
@@ -71,6 +81,8 @@ impl Lockfile {
             ArtifactType::Skill => &self.skills,
             ArtifactType::Agent => &self.agents,
             ArtifactType::Rule => &self.rules,
+            ArtifactType::PromptTemplate => &self.prompt_templates,
+            ArtifactType::Mcp => &self.mcps,
         }
     }
 
@@ -83,11 +95,17 @@ impl Lockfile {
             ArtifactType::Skill => &mut self.skills,
             ArtifactType::Agent => &mut self.agents,
             ArtifactType::Rule => &mut self.rules,
+            ArtifactType::PromptTemplate => &mut self.prompt_templates,
+            ArtifactType::Mcp => &mut self.mcps,
         }
     }
 
     /// Total count of locked entries across all types.
     pub fn total_count(&self) -> usize {
-        self.skills.len() + self.agents.len() + self.rules.len()
+        self.skills.len()
+            + self.agents.len()
+            + self.rules.len()
+            + self.prompt_templates.len()
+            + self.mcps.len()
     }
 }

@@ -3,17 +3,32 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-/// The three types of items rune can manage.
+/// The types of items rune can manage.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ArtifactType {
     Skill,
     Agent,
     Rule,
+    /// Pi-style slash-command templates: a single `.md` file per template,
+    /// with optional frontmatter and `$1`/`$ARGUMENTS` substitution. Loaded
+    /// by Pi via the `prompts` settings key (and `--prompt-template <path>`
+    /// CLI flag).
+    PromptTemplate,
+    /// MCP server configuration: a single config file per server (typically
+    /// JSON/YAML, naming the command, args, env). Pi has no native MCP
+    /// runtime today; this artifact stands up the content layer ahead of
+    /// a future Pi-side bridge extension.
+    Mcp,
 }
 
 /// All supported types, in display order.
-pub const ALL_TYPES: [ArtifactType; 3] =
-    [ArtifactType::Skill, ArtifactType::Agent, ArtifactType::Rule];
+pub const ALL_TYPES: [ArtifactType; 5] = [
+    ArtifactType::Skill,
+    ArtifactType::Agent,
+    ArtifactType::Rule,
+    ArtifactType::PromptTemplate,
+    ArtifactType::Mcp,
+];
 
 impl ArtifactType {
     /// TOML section name and manifest key.
@@ -22,6 +37,8 @@ impl ArtifactType {
             Self::Skill => "skills",
             Self::Agent => "agents",
             Self::Rule => "rules",
+            Self::PromptTemplate => "prompt-templates",
+            Self::Mcp => "mcps",
         }
     }
 
@@ -31,11 +48,14 @@ impl ArtifactType {
             Self::Skill => ".claude/skills",
             Self::Agent => ".claude/agents",
             Self::Rule => ".claude/rules",
+            Self::PromptTemplate => ".claude/prompt-templates",
+            Self::Mcp => ".claude/mcps",
         }
     }
 
     /// Whether items of this type are stored as directories (with SKILL.md).
-    /// Only skills use directory format; agents and rules are single files.
+    /// Only skills use directory format; agents/rules/prompt-templates/mcps
+    /// are single files.
     pub fn is_directory_type(self) -> bool {
         matches!(self, Self::Skill)
     }
@@ -46,6 +66,8 @@ impl ArtifactType {
             Self::Skill => "skill",
             Self::Agent => "agent",
             Self::Rule => "rule",
+            Self::PromptTemplate => "prompt-template",
+            Self::Mcp => "mcp",
         }
     }
 
@@ -55,6 +77,10 @@ impl ArtifactType {
             "skill" | "skills" => Some(Self::Skill),
             "agent" | "agents" => Some(Self::Agent),
             "rule" | "rules" => Some(Self::Rule),
+            "prompt" | "prompts" | "prompt-template" | "prompt-templates" => {
+                Some(Self::PromptTemplate)
+            }
+            "mcp" | "mcps" => Some(Self::Mcp),
             _ => None,
         }
     }
@@ -90,7 +116,18 @@ pub struct Manifest {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub rules: BTreeMap<String, SkillEntry>,
 
-    /// Optional path overrides per type. Keys are type names (skills, agents, rules).
+    #[serde(
+        default,
+        rename = "prompt-templates",
+        skip_serializing_if = "BTreeMap::is_empty"
+    )]
+    pub prompt_templates: BTreeMap<String, SkillEntry>,
+
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub mcps: BTreeMap<String, SkillEntry>,
+
+    /// Optional path overrides per type. Keys are type names (skills, agents, rules,
+    /// prompt-templates, mcps).
     /// Values are paths relative to the project root.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub paths: Option<BTreeMap<String, String>>,
@@ -230,6 +267,8 @@ impl Manifest {
             ArtifactType::Skill => &self.skills,
             ArtifactType::Agent => &self.agents,
             ArtifactType::Rule => &self.rules,
+            ArtifactType::PromptTemplate => &self.prompt_templates,
+            ArtifactType::Mcp => &self.mcps,
         }
     }
 
@@ -242,12 +281,18 @@ impl Manifest {
             ArtifactType::Skill => &mut self.skills,
             ArtifactType::Agent => &mut self.agents,
             ArtifactType::Rule => &mut self.rules,
+            ArtifactType::PromptTemplate => &mut self.prompt_templates,
+            ArtifactType::Mcp => &mut self.mcps,
         }
     }
 
     /// Total count of items across all types.
     pub fn total_count(&self) -> usize {
-        self.skills.len() + self.agents.len() + self.rules.len()
+        self.skills.len()
+            + self.agents.len()
+            + self.rules.len()
+            + self.prompt_templates.len()
+            + self.mcps.len()
     }
 
     /// Find which type a name belongs to. Searches all sections.

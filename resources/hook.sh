@@ -12,13 +12,17 @@ set -e
 INPUT=$(cat)
 FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty')
 
-# Only act on .claude/skills/, .claude/agents/, or .claude/rules/ .md files
+# Only act on .claude/{skills,agents,rules,prompt-templates,mcps}/*.md files
 MATCH=0
 if [[ "$FILE_PATH" == *".claude/skills/"* ]] && [[ "$FILE_PATH" == *.md ]]; then
     MATCH=1
 elif [[ "$FILE_PATH" == *".claude/agents/"* ]] && [[ "$FILE_PATH" == *.md ]]; then
     MATCH=1
 elif [[ "$FILE_PATH" == *".claude/rules/"* ]] && [[ "$FILE_PATH" == *.md ]]; then
+    MATCH=1
+elif [[ "$FILE_PATH" == *".claude/prompt-templates/"* ]] && [[ "$FILE_PATH" == *.md ]]; then
+    MATCH=1
+elif [[ "$FILE_PATH" == *".claude/mcps/"* ]] && [[ "$FILE_PATH" == *.md ]]; then
     MATCH=1
 fi
 
