@@ -2,7 +2,6 @@ use anyhow::{Context, Result};
 use std::path::Path;
 
 use super::auth::{self, clone_url};
-use super::paths::skill_path;
 use crate::config::Registry;
 
 /// Run a git command. Returns error with stderr on failure.
@@ -177,9 +176,10 @@ pub fn commit_and_push(
     skill_name: &str,
     reg: &Registry,
     message: Option<&str>,
+    artifact_type: crate::manifest::ArtifactType,
 ) -> Result<()> {
-    let skill_rel = skill_path(repo_dir, reg, skill_name);
-    let rel = skill_rel.strip_prefix(repo_dir).unwrap_or(&skill_rel);
+    let artifact_rel = super::paths::artifact_path(repo_dir, reg, skill_name, artifact_type);
+    let rel = artifact_rel.strip_prefix(repo_dir).unwrap_or(&artifact_rel);
     let rel_str = rel.to_string_lossy();
     git_command(&["add", "-A", "--", &rel_str], Some(repo_dir))?;
 
