@@ -186,7 +186,7 @@ pub fn push(
     registry::copy_skill(local_path, &reg_path)?;
 
     // Commit and push via git CLI
-    registry::commit_and_push(&repo_dir, name, reg, message)?;
+    registry::commit_and_push(&repo_dir, name, reg, message, at)?;
 
     eprintln!("Pushed {} to {}", name, color::cyan(&reg.name));
     Ok(())

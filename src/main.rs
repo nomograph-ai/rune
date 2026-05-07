@@ -18,7 +18,7 @@ use std::path::PathBuf;
 #[command(
     name = "rune",
     version,
-    about = "Registry manager for AI coding agent skills, agents, and rules",
+    about = "Registry manager for AI coding agent skills, agents, rules, prompt templates, and MCP configs",
     long_about = "rune syncs markdown files from git-based registries into .claude/skills/, \
         .claude/agents/, and .claude/rules/.\n\n\
         Skills are inscribed knowledge -- reusable instructions that teach AI agents \
@@ -75,7 +75,7 @@ enum Commands {
         /// Add all items of the given type from the specified registry (requires --from)
         #[arg(long, requires = "from")]
         all: bool,
-        /// Item type: skill (default), agent, or rule
+        /// Item type: skill (default), agent, rule, prompt-template, or mcp
         #[arg(short = 't', long = "type", default_value = "skill")]
         item_type: String,
     },
@@ -83,7 +83,7 @@ enum Commands {
     /// Remove manifest entries whose registry is not configured
     Prune,
 
-    /// Remove a skill, agent, or rule from this project
+    /// Remove a skill, agent, rule, prompt-template, or mcp from this project
     Remove {
         /// Item name to remove
         name: String,
@@ -99,7 +99,7 @@ enum Commands {
         file: Option<String>,
     },
 
-    /// Sync all skills, agents, and rules from registries (pull updates)
+    /// Sync all skills, agents, rules, prompt-templates, and mcps from registries (pull updates)
     Sync {
         /// Overwrite locally modified items
         #[arg(long)]
@@ -129,7 +129,7 @@ enum Commands {
     Browse {
         /// Registry name (e.g., runes, anthropic)
         registry: String,
-        /// Filter by type: skill, agent, or rule
+        /// Filter by type: skill, agent, rule, prompt-template, or mcp
         #[arg(short = 't', long = "type")]
         item_type: Option<String>,
     },
@@ -219,8 +219,11 @@ enum ConfigCommand {
 
 /// Parse a --type flag string into an ArtifactType.
 fn parse_type_flag(s: &str) -> Result<ArtifactType> {
-    ArtifactType::parse(s)
-        .ok_or_else(|| anyhow::anyhow!("Unknown type: {s}. Use skill, agent, or rule."))
+    ArtifactType::parse(s).ok_or_else(|| {
+        anyhow::anyhow!(
+            "Unknown type: {s}. Use skill, agent, rule, prompt-template, or mcp."
+        )
+    })
 }
 
 fn main() -> Result<()> {
