@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.16.0] (2026-05-07)
+
+### Added
+
+- **`prompt-template` artifact type.** First-class manifest entry for
+  prompt templates alongside skills. Registries can now declare
+  prompt templates that subscribers pull via `rune sync`. Companion
+  to the existing `mcp` artifact entry pattern.
+- **`mcp` artifact type.** Manifest support for MCP server
+  configurations as a synced artifact (writes into `.claude/mcps/`
+  on subscriber projects). Mirrors the prompt-template pattern.
+
+### Fixed
+
+- **`commit_and_push` now uses an artifact-type-aware path.**
+  Previously the push helper hardcoded the skill-only directory
+  layout, breaking pushes for prompt-template and mcp registries.
+  After this fix every artifact type writes back to its correct
+  destination dir.
+
 ## [0.15.0] (2026-04-26)
 
 ### Added
