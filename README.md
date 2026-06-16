@@ -291,6 +291,16 @@ auto-detected from the manifest when omitted.
 | `--dry-run` | Show what would change without mutating |
 | `--project <dir>` | Target a different project directory |
 
+## Retired 2026-06-16
+
+rune is retired, superseded by per-namespace **`runes`** skills registries
+(`dunn.dev/runes` = operator-layer centerpoint; `nomograph/runes` =
+nomograph-shipping) materialized by a small, copied `just` shim. Skills are the
+portable Agent Skills `SKILL.md` standard, so this is runtime-agnostic (Claude
+Code / Pi / OpenCode). Cross-runtime sync + lockfile, if needed, return as a
+thin shim — not a bespoke binary. Migration record: `nomograph/keaton` ->
+`campaigns/harness/sessions/baseline.md` (2026-06-16).
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
